@@ -22,10 +22,11 @@ import {
   Filter,
   Gauge,
   Grid2X2,
-  Leaf,
+  LogIn,
   LogOut,
   Menu,
   MoreHorizontal,
+  Palette,
   PanelLeftClose,
   PanelLeftOpen,
   Pencil,
@@ -76,6 +77,8 @@ const databaseStateProperties = {
 }
 
 const typeLabels = { text: 'Teks singkat', paragraph: 'Paragraf', number: 'Angka', currency: 'Anggaran', header: 'Header', separator: 'Separator', date: 'Tanggal', time: 'Waktu', checklist: 'Checklist', list: 'Pilihan list' }
+const defaultPokjaColors = { 'Pokja Produksi': '#59a96d', 'Pokja Bibit': '#c38a3d', 'Pokja Pakan': '#5e7dc7' }
+const pokjaQuickColors = ['#39a778', '#59a96d', '#c38a3d', '#5e7dc7', '#c45c4a', '#2f8c89', '#875a9e', '#8a8f3a', '#596f83']
 const navItems = [
   { id: 'overview', label: 'Ringkasan', icon: Gauge },
   { id: 'database', label: 'Database hibah', icon: Database },
@@ -279,6 +282,10 @@ function useDatabaseState(key, fallback, endpoint) {
 
 function formatCurrency(value) {
   return new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(Number(value || 0))
+}
+
+function formatCompactBudget(value) {
+  return new Intl.NumberFormat('id-ID', { notation: 'compact', maximumFractionDigits: 1 }).format(Number(value || 0))
 }
 
 function formatPercentage(value, total) {
@@ -546,8 +553,8 @@ function App() {
 function LoginScreen({ onSubmit, error, isLoggingIn, loginSuccessName, role, setRole }) {
   const [showPassword, setShowPassword] = useState(false)
   return <div className="login-page">
-    <div className="login-art"><div className="art-top"><span className="logo-shell"><img className="agency-logo" src={agencyLogo} alt="Logo Dinas Pertanian dan Peternakan Provinsi Jawa Tengah" onError={(event) => { event.currentTarget.style.display = 'none'; event.currentTarget.parentElement.querySelector('svg').style.display = 'block' }} /><Leaf size={31} /></span></div><div className="art-copy"><p className="eyebrow">SISTEM INFORMASI HIBAH</p><h1>HIBAH UANG<br /><em>BIDANG PETERNAKAN</em></h1><span className="art-rule" /><p className="art-quote">&quot;Ya TUHAN, berikan kami kejernihan dan ketenangan hati dalam menjalani tugas pengelolaan data hibah.&quot;</p></div><div className="agency-name">DINAS PERTANIAN DAN PETERNAKAN<br /><strong>PROVINSI JAWA TENGAH</strong></div></div>
-    <div className="login-panel"><div className="login-box"><div className="mobile-brand"><span className="brand-mark"><Leaf size={18} /></span><span>Hibah Peternakan</span></div><p className="eyebrow">SILAKAN LOGIN KE AKUN ANDA</p><h2>SELAMAT DATANG</h2><form onSubmit={onSubmit}><label>USERNAME<div className="aero-input"><UserRound size={16} /><input name="email" type="text" placeholder="Masukkan username" autoComplete="username" /></div></label><label>PASSWORD<div className="aero-input password-wrap"><KeyIcon /><input name="password" type={showPassword ? 'text' : 'password'} placeholder="Masukkan password" autoComplete="current-password" /><button type="button" className="password-toggle" onClick={() => setShowPassword((current) => !current)} aria-label={showPassword ? 'Sembunyikan password' : 'Tampilkan password'} title={showPassword ? 'Sembunyikan password' : 'Tampilkan password'}>{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button></div></label>{error && <div className="form-error">{error}</div>}<button className={`primary-btn login-btn ${isLoggingIn ? 'is-loading' : ''}`} type="submit" disabled={isLoggingIn}>{isLoggingIn ? <><span className="login-spinner" /> MEMERIKSA AKUN...</> : <>MASUK APLIKASI <span>→</span></>}</button></form><div className="demo-login"><span>Mode demo:</span><button type="button" className={role === 'superadmin' ? 'active' : ''} onClick={() => setRole('superadmin')}>Superadmin</button><button type="button" className={role === 'user' ? 'active' : ''} onClick={() => setRole('user')}>User</button></div><p className="login-foot">© 2026 HIBAH BIDANG PETERNAKAN ·<br /> DINAS PERTANIAN DAN PETERNAKAN</p></div></div>{loginSuccessName && <div className="login-success-toast" role="status"><span className="success-check"><Check size={17} /></span><span><strong>Selamat datang, {loginSuccessName}</strong><small>Login berhasil, menyiapkan dashboard...</small></span></div>}
+    <div className="login-art"><div className="art-top"><span className="logo-shell"><img className="agency-logo" src={agencyLogo} alt="Logo Dinas Pertanian dan Peternakan Provinsi Jawa Tengah" onError={(event) => { event.currentTarget.style.display = 'none'; event.currentTarget.parentElement.querySelector('svg').style.display = 'block' }} /><LogIn size={31} /></span></div><div className="art-copy"><p className="eyebrow">SISTEM INFORMASI HIBAH</p><h1>HIBAH UANG<br /><em>BIDANG PETERNAKAN</em></h1><span className="art-rule" /><p className="art-quote">&quot;Ya TUHAN, berikan kami kejernihan dan ketenangan hati dalam menjalankan tugas pengelolaan hibah Bidang Peternakan.&quot;</p></div><div className="agency-name">DINAS PERTANIAN DAN PETERNAKAN<br /><strong>PROVINSI JAWA TENGAH</strong></div></div>
+    <div className="login-panel"><div className="login-box"><div className="mobile-brand"><span className="brand-mark"><LogIn size={18} /></span><span>Hibah Peternakan</span></div><p className="eyebrow">SILAKAN LOGIN KE AKUN ANDA</p><h2>SELAMAT DATANG</h2><form onSubmit={onSubmit}><label>USERNAME<div className="aero-input"><UserRound size={16} /><input name="email" type="text" placeholder="Masukkan username" autoComplete="username" /></div></label><label>PASSWORD<div className="aero-input password-wrap"><KeyIcon /><input name="password" type={showPassword ? 'text' : 'password'} placeholder="Masukkan password" autoComplete="current-password" /><button type="button" className="password-toggle" onClick={() => setShowPassword((current) => !current)} aria-label={showPassword ? 'Sembunyikan password' : 'Tampilkan password'} title={showPassword ? 'Sembunyikan password' : 'Tampilkan password'}>{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button></div></label>{error && <div className="form-error">{error}</div>}<button className={`primary-btn login-btn ${isLoggingIn ? 'is-loading' : ''}`} type="submit" disabled={isLoggingIn}>{isLoggingIn ? <><span className="login-spinner" /> MEMERIKSA AKUN...</> : <><span>MASUK APLIKASI</span> <LogIn size={18} /></>}</button></form><p className="login-foot">© 2026 HIBAH BIDANG PETERNAKAN ·<br /> DINAS PERTANIAN DAN PETERNAKAN</p></div></div>{loginSuccessName && <div className="login-success-toast" role="status"><span className="success-check"><Check size={17} /></span><span><strong>Selamat datang, {loginSuccessName}</strong><small>Login berhasil, menyiapkan dashboard...</small></span></div>}
   </div>
 }
 
@@ -561,7 +568,7 @@ function Sidebar({ activePage, setActivePage, role, user, t, onLogout, collapsed
   return <aside className={`sidebar ${collapsed ? 'sidebar-collapsed' : ''}`}><div className="sidebar-brand"><span className="brand-mark logo-brand"><img src={agencyLogo} alt="Logo E-HIBAH" /></span><div><strong>E-HIBAH</strong><small>Hibah Bidang Peternakan</small></div></div><button className="sidebar-toggle" onClick={onToggle} aria-label={collapsed ? 'Tampilkan menu' : 'Sembunyikan menu'} title={collapsed ? 'Tampilkan menu' : 'Sembunyikan menu'}>{collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}</button><div className="workspace-switch"><span className="workspace-icon"><Grid2X2 size={16} /></span><span><small>WORKSPACE</small><strong>Jawa Tengah</strong></span><ChevronDown size={15} /></div><nav><p className="nav-caption">Menu utama</p>{navItems.filter((item) => !item.admin || role === 'superadmin').map((item) => {
     const Icon = item.icon
     const label = item.id === 'overview' ? t.dashboard : item.id === 'database' ? t.database : item.id === 'fields' ? t.fields : item.label
-    return <button key={item.id} className={`nav-item ${activePage === item.id ? 'active' : ''}`} onClick={() => setActivePage(item.id)} title={collapsed ? label : undefined}><Icon size={18} /><span>{label}</span>{item.id === 'database' && <span className="nav-count">4</span>}</button>
+    return <button key={item.id} className={`nav-item ${activePage === item.id ? 'active' : ''}`} onClick={() => setActivePage(item.id)} title={collapsed ? label : undefined}><Icon size={18} /><span>{label}</span></button>
   })}<p className="nav-caption second">Sistem</p><button className={`nav-item ${activePage === 'settings' ? 'active' : ''}`} onClick={() => setActivePage('settings')} title={collapsed ? t.settings : undefined}><Settings size={18} /><span>{t.settings}</span></button>{role === 'superadmin' && <button className={`nav-item ${activePage === 'users' ? 'active' : ''}`} onClick={() => setActivePage('users')} title={collapsed ? 'Manajemen user' : undefined}><UsersRound size={18} /><span>Manajemen user</span></button>}</nav><div className="sidebar-bottom"><button className="profile-mini" onClick={onLogout} title={collapsed ? 'Keluar' : undefined}><span className="avatar">AS</span><span><strong>Admin Sistem</strong><small>{role === 'superadmin' ? 'Superadmin' : 'Operator data'}</small></span><LogOut size={16} /></button></div></aside>
 }
 
@@ -570,7 +577,63 @@ function TopbarLegacy({ onMenu, user, theme, setTheme, language, setLanguage, t 
 }
 
 function Topbar({ onMenu, user, theme, setTheme, language, setLanguage, t, profileMenuOpen, onProfileMenu, onManageAccount, onLogout, onSync, syncStatus, lastSyncAt }) {
-  return <header className="topbar"><button className="mobile-menu" onClick={onMenu} aria-label="Buka menu navigasi"><Menu size={20} /></button><div className="breadcrumb"><span>Workspace</span><span>/</span><strong>{t.dashboard}</strong></div><div className="top-actions"><button className={`sync-button ${syncStatus}`} onClick={onSync} disabled={syncStatus === 'syncing'} title={lastSyncAt ? `Terakhir sinkron ${lastSyncAt.toLocaleTimeString('id-ID')}` : 'Tarik perubahan terbaru dari server'} aria-label="Sinkronisasi data"><RefreshCw size={15} className={syncStatus === 'syncing' ? 'sync-spinning' : ''} /><span>{syncStatus === 'syncing' ? 'Menyinkronkan...' : syncStatus === 'error' ? 'Sinkronisasi gagal' : 'Sinkronisasi'}</span></button><button className="icon-btn notification" aria-label="Notifikasi"><Bell size={18} /><i /></button><select className="compact-select" value={language} onChange={(event) => setLanguage(event.target.value)} aria-label="Bahasa"><option value="id">ID</option><option value="en">EN</option></select><select className="compact-select theme-select" value={theme} onChange={(event) => setTheme(event.target.value)} aria-label="Tema"><option value="green">Green</option><option value="light">Light</option><option value="dark">Dark</option><option value="blue">Blue</option></select><div className="profile-menu-wrap"><button className="top-avatar profile-trigger" onClick={onProfileMenu} aria-label="Buka menu akun" aria-expanded={profileMenuOpen}>{getUserInitials(user)}</button>{profileMenuOpen && <div className="profile-dropdown"><div className="profile-dropdown-head"><strong>{user?.name || 'Pengguna'}</strong><small>{user?.email || ''}</small></div><button onClick={onManageAccount}><UserRound size={16} /> Kelola akun</button><button onClick={onLogout} className="dropdown-logout"><LogOut size={16} /> Logout</button></div>}</div></div></header>
+  const [serverTime, setServerTime] = useState(null)
+  const dateFormatter = new Intl.DateTimeFormat('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta' })
+  const formatServerDate = (date) => dateFormatter.format(date).replace(/^Jumat,/, "Jum'at,")
+  const timeFormatter = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23', timeZone: 'Asia/Jakarta' })
+
+  useEffect(() => {
+    let isMounted = true
+    const refreshServerTime = async () => {
+      try {
+        const response = await fetch('/api/index.php?action=time', { cache: 'no-store' })
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        const result = await response.json()
+        const nextTime = new Date(result.timestamp)
+        if (isMounted && !Number.isNaN(nextTime.getTime())) setServerTime(nextTime)
+      } catch (error) {
+        console.error('Gagal membaca waktu server:', error)
+      }
+    }
+
+    refreshServerTime()
+    const tickInterval = window.setInterval(() => {
+      setServerTime((current) => current ? new Date(current.getTime() + 1000) : current)
+    }, 1000)
+    const refreshInterval = window.setInterval(refreshServerTime, 60000)
+    return () => {
+      isMounted = false
+      window.clearInterval(tickInterval)
+      window.clearInterval(refreshInterval)
+    }
+  }, [])
+
+  return (
+    <header className="topbar">
+      <button className="mobile-menu" onClick={onMenu} aria-label="Buka menu navigasi"><Menu size={20} /></button>
+      <div className="breadcrumb">
+        <span>Workspace</span>
+        <span>/</span>
+        <strong className="breadcrumb-server-time" aria-label={serverTime ? `${formatServerDate(serverTime)} pukul ${timeFormatter.format(serverTime)} waktu server` : 'Memuat waktu server'}>
+          {serverTime ? <>
+            <time dateTime={serverTime.toISOString()}>{formatServerDate(serverTime)}</time>
+            <span aria-hidden="true">|</span>
+            <time dateTime={serverTime.toISOString()}>{timeFormatter.format(serverTime)}</time>
+          </> : 'Memuat waktu server...'}
+        </strong>
+      </div>
+      <div className="top-actions">
+        <button className={`sync-button ${syncStatus}`} onClick={onSync} disabled={syncStatus === 'syncing'} title={lastSyncAt ? `Terakhir sinkron ${lastSyncAt.toLocaleTimeString('id-ID')}` : 'Tarik perubahan terbaru dari server'} aria-label="Sinkronisasi data"><RefreshCw size={15} className={syncStatus === 'syncing' ? 'sync-spinning' : ''} /><span>{syncStatus === 'syncing' ? 'Menyinkronkan...' : syncStatus === 'error' ? 'Sinkronisasi gagal' : 'Sinkronisasi'}</span></button>
+        <button className="icon-btn notification" aria-label="Notifikasi"><Bell size={18} /><i /></button>
+        <select className="compact-select" value={language} onChange={(event) => setLanguage(event.target.value)} aria-label="Bahasa"><option value="id">ID</option><option value="en">EN</option></select>
+        <select className="compact-select theme-select" value={theme} onChange={(event) => setTheme(event.target.value)} aria-label="Tema"><option value="green">Green</option><option value="light">Light</option><option value="dark">Dark</option><option value="blue">Blue</option></select>
+        <div className="profile-menu-wrap">
+          <button className="top-avatar profile-trigger" onClick={onProfileMenu} aria-label="Buka menu akun" aria-expanded={profileMenuOpen}>{getUserInitials(user)}</button>
+          {profileMenuOpen && <div className="profile-dropdown"><div className="profile-dropdown-head"><strong>{user?.name || 'Pengguna'}</strong><small>{user?.email || ''}</small></div><button onClick={onManageAccount}><UserRound size={16} /> Kelola akun</button><button onClick={onLogout} className="dropdown-logout"><LogOut size={16} /> Logout</button></div>}
+        </div>
+      </div>
+    </header>
+  )
 }
 
 function AccountModal({ user, onClose, onSave }) {
@@ -672,6 +735,23 @@ function AccountModal({ user, onClose, onSave }) {
 }
 
 function Overview({ records, fields, verifications, user, t, onNavigate }) {
+  const [pokjaColors, setPokjaColors] = usePersistedState('hibah-pokja-colors', defaultPokjaColors)
+  const [budgetChartColor, setBudgetChartColor] = usePersistedState('hibah-budget-chart-color', '#39a778')
+  const [showPokjaActions, setShowPokjaActions] = useState(false)
+  const [activePokjaColor, setActivePokjaColor] = useState(null)
+  const [isExportingPokja, setIsExportingPokja] = useState(false)
+  const [showBudgetColorPicker, setShowBudgetColorPicker] = useState(false)
+  const pokjaActionsRef = useRef(null)
+  const pokjaPanelRef = useRef(null)
+  const budgetColorPickerRef = useRef(null)
+
+  useEffect(() => {
+    const migrationKey = 'hibah-pokja-production-color-tune-v1'
+    if (localStorage.getItem(migrationKey)) return
+    setPokjaColors((current) => ({ ...current, 'Pokja Produksi': defaultPokjaColors['Pokja Produksi'] }))
+    localStorage.setItem(migrationKey, 'applied')
+  }, [setPokjaColors])
+
   const parseNumericValue = (value) => {
     if (value === undefined || value === null || value === '') return 0
     if (typeof value === 'number') return Number.isFinite(value) ? value : 0
@@ -739,6 +819,38 @@ function Overview({ records, fields, verifications, user, t, onNavigate }) {
   const [activePieCategory, setActivePieCategory] = useState(null)
 
   useEffect(() => {
+    if (!showPokjaActions) return undefined
+    const closeOnOutsideClick = (event) => {
+      if (!pokjaActionsRef.current?.contains(event.target)) setShowPokjaActions(false)
+    }
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setShowPokjaActions(false)
+    }
+    document.addEventListener('pointerdown', closeOnOutsideClick)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsideClick)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [showPokjaActions])
+
+  useEffect(() => {
+    if (!showBudgetColorPicker) return undefined
+    const closeOnOutsideClick = (event) => {
+      if (!budgetColorPickerRef.current?.contains(event.target)) setShowBudgetColorPicker(false)
+    }
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setShowBudgetColorPicker(false)
+    }
+    document.addEventListener('pointerdown', closeOnOutsideClick)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsideClick)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [showBudgetColorPicker])
+
+  useEffect(() => {
     if (selectedYear && years.length && !years.includes(selectedYear)) {
       setSelectedYear(years[0] || '')
     }
@@ -781,6 +893,51 @@ function Overview({ records, fields, verifications, user, t, onNavigate }) {
       percentage: focusRecords.length ? categoryRecords.length / focusRecords.length : 0,
     }
   })
+  const normalizePokjaValue = (value) => {
+    const text = String(value ?? '').trim()
+    if (!text) return ''
+    const lower = text.toLowerCase()
+    if (lower.includes('produksi')) return 'Pokja Produksi'
+    if (lower.includes('bibit')) return 'Pokja Bibit'
+    if (lower.includes('pakan')) return 'Pokja Pakan'
+    return text
+  }
+  const pokjaGroups = ['Pokja Produksi', 'Pokja Bibit', 'Pokja Pakan']
+  const pokjaSummary = pokjaGroups.map((pokjaName) => {
+    const recordsForPokja = focusRecords.filter((record) => {
+      const pokjaValue = record.values?.pokja ?? record.values?.pokja_pengampu ?? ''
+      return normalizePokjaValue(pokjaValue) === pokjaName
+    })
+    const summary = verificationCategories.map((category) => {
+      const categoryRecords = recordsForPokja.filter((record) => getVerificationCategory(record) === category.id)
+      return {
+        ...category,
+        groups: categoryRecords.length,
+        budget: categoryRecords.reduce((sum, record) => sum + getRecordBudget(record), 0),
+        percentage: recordsForPokja.length ? categoryRecords.length / recordsForPokja.length : 0,
+      }
+    })
+    return {
+      name: pokjaName,
+      total: recordsForPokja.length,
+      budget: recordsForPokja.reduce((sum, record) => sum + getRecordBudget(record), 0),
+      summary,
+    }
+  })
+  const totalPokjaGroups = pokjaSummary.reduce((sum, item) => sum + item.total, 0)
+  const totalPokjaBudget = pokjaSummary.reduce((sum, item) => sum + item.budget, 0)
+  const combinedPokjaSummary = pokjaSummary.map((pokja, index) => {
+    const budgetShare = totalPokjaBudget ? pokja.budget / totalPokjaBudget : 0
+    const groupShare = totalPokjaGroups ? pokja.total / totalPokjaGroups : 0
+    return {
+      id: `pokja-${index}`,
+      label: pokja.name,
+      color: pokjaColors[pokja.name] || defaultPokjaColors[pokja.name],
+      totalGroups: pokja.total,
+      totalBudget: pokja.budget,
+      combinedShare: (budgetShare + groupShare) / 2,
+    }
+  }).sort((left, right) => right.totalBudget - left.totalBudget)
   const kabkotTotals = focusRecords.reduce((totals, record) => {
     const kabkot = String(record.values?.kabkot || 'Lainnya').trim() || 'Lainnya'
     totals[kabkot] = (totals[kabkot] || 0) + getRecordBudget(record)
@@ -792,9 +949,6 @@ function Overview({ records, fields, verifications, user, t, onNavigate }) {
     return counts
   }, {})
   const chartData = Object.entries(kabkotTotals).sort(([, left], [, right]) => right - left)
-  const chartColumnsStyle = { gridTemplateColumns: `repeat(${Math.max(chartData.length, 1)}, minmax(0, 1fr))` }
-  const max = Math.max(...chartData.map(([, value]) => Number(value || 0)), 1)
-  const chartTicks = [max, max / 2, 0]
   const topKabkot = chartData[0] || ['-', 0]
   const totalKabkotArea = chartData.reduce((sum, [, value]) => sum + Number(value || 0), 0)
   const avgKabkot = chartData.length ? totalKabkotArea / chartData.length : 0
@@ -806,12 +960,37 @@ function Overview({ records, fields, verifications, user, t, onNavigate }) {
 
   const insightLabel = selectedYear ? `${selectedYear}` : years[0] ? `Tahun ${years[0]}` : 'Semua data'
 
+  const downloadPokjaMonitoring = async () => {
+    const panel = pokjaPanelRef.current
+    if (!panel) return
+    setShowPokjaActions(false)
+    setIsExportingPokja(true)
+    try {
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+      const { default: html2canvas } = await import('html2canvas')
+      const canvas = await html2canvas(panel, {
+        backgroundColor: '#ffffff',
+        scale: 2,
+        useCORS: true,
+        ignoreElements: (element) => element.hasAttribute('data-html2canvas-ignore'),
+      })
+      const image = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'))
+      if (!image) throw new Error('Gambar monitoring tidak dapat dibuat.')
+      downloadFile(image, `monitoring-pokja-${selectedYear || 'semua-tahun'}.png`)
+    } catch (error) {
+      console.error('Gagal mengunduh gambar monitoring Pokja:', error)
+      window.alert('Gagal mengunduh gambar monitoring Pokja.')
+    } finally {
+      setIsExportingPokja(false)
+    }
+  }
+
   return (
     <div className="content-wrap">
-      <section className="page-heading">
+      <section className="page-heading overview-page-heading">
         <div>
           <p className="eyebrow">MONITORING PROGRAM</p>
-          <h1>{t.welcome}, Admin <span className="heading-leaf">✦</span></h1>
+          <h1>{t.welcome} <span className="heading-leaf">✦</span></h1>
           <p className="muted">Pantau perkembangan penyaluran hibah di seluruh wilayah Jawa Tengah.</p>
         </div>
         <div className="heading-actions">
@@ -835,36 +1014,37 @@ function Overview({ records, fields, verifications, user, t, onNavigate }) {
       </section>
 
       <section className="dashboard-grid">
-        <div className="panel chart-panel">
+        <div className="panel chart-panel" style={{ '--budget-chart-color': budgetChartColor }}>
           <div className="panel-head">
             <div>
               <h2>Kumulatif pagu anggaran per kabupaten/kota</h2>
               <p className="muted">Data kumulatif anggaran per kabupaten/kota{selectedYear ? ` · ${selectedYear}` : ''}</p>
             </div>
-            <button className="filter-button">{selectedYear || 'Semua tahun'} <ChevronDown size={15} /></button>
-          </div>
-          <div className="chart-area">
-            <div className="chart-y">{chartTicks.map((tick) => <span key={tick}>{tick === 0 ? '0' : `${formatCurrency(Math.round(tick / 1000000))} jt`}</span>)}</div>
-            <div className={`chart-track ${chartData.length > 24 ? 'is-dense' : ''}`} role="region" aria-label="Diagram batang anggaran per kabupaten/kota" tabIndex={0}>
-              <div className="bars" style={chartColumnsStyle}>
-                {chartData.length ? chartData.map(([kabkot, totalKabkot]) => (
-                  <div className="bar-column" key={kabkot} tabIndex={0} role="img" aria-label={`${kabkot}, anggaran Rp ${formatCurrency(totalKabkot)}, ${formatBudgetShare(totalKabkot, total)} dari total anggaran, ${formatCurrency(kabkotGroupCounts[kabkot] || 0)} kelompok`}>
-                    <div className="bar-tooltip" aria-hidden="true">
-                      <strong>{kabkot}</strong>
-                      <span>Anggaran <b>Rp {formatCurrency(totalKabkot)}</b></span>
-                      <span>Persentase dari total <b>{formatBudgetShare(totalKabkot, total)}</b></span>
-                      <span>Jumlah kelompok <b>{formatCurrency(kabkotGroupCounts[kabkot] || 0)}</b></span>
-                    </div>
-                    <div className="bar-value">{formatCurrency(Math.round(totalKabkot / 1000000))}</div>
-                    <div className="bar" style={{ height: `${Math.max(12, totalKabkot / max * 130)}px` }} />
+            <div className="chart-panel-actions">
+              <div className="budget-chart-color-wrap" ref={budgetColorPickerRef}>
+                <button type="button" className="chart-color-trigger" aria-label="Atur warna diagram anggaran" title="Atur warna diagram" aria-expanded={showBudgetColorPicker} onClick={() => setShowBudgetColorPicker((current) => !current)}>
+                  <Palette size={15} aria-hidden="true" />
+                  <span style={{ backgroundColor: budgetChartColor }} />
+                </button>
+                {showBudgetColorPicker && <div className="budget-chart-color-menu" role="dialog" aria-label="Palet warna diagram anggaran">
+                  <div className="pokja-actions-heading">
+                    <strong>Warna diagram</strong>
+                    <span>Kumulatif pagu anggaran</span>
                   </div>
-                )) : <div className="empty-chart-state">Tidak ada data untuk tahun yang dipilih.</div>}
+                  <IroWheelColorPicker color={budgetChartColor} onChange={setBudgetChartColor} />
+                  <div className="pokja-quick-colors" role="group" aria-label="Warna cepat diagram anggaran">
+                    {pokjaQuickColors.map((color) => (
+                      <button key={color} type="button" className="pokja-color-swatch" style={{ '--palette-color': color }} aria-label={`Pilih warna ${color}`} onClick={() => setBudgetChartColor(color)}>
+                        <span />
+                      </button>
+                    ))}
+                  </div>
+                </div>}
               </div>
-              {chartData.length > 0 && <div className="chart-x-axis" style={chartColumnsStyle} aria-hidden="true">
-                {chartData.map(([kabkot]) => <div className="chart-x-label" key={kabkot}><span>{kabkot}</span></div>)}
-              </div>}
+              <button className="filter-button">{selectedYear || 'Semua tahun'} <ChevronDown size={15} /></button>
             </div>
           </div>
+          <BudgetBarChart chartData={chartData} totalBudget={total} groupCounts={kabkotGroupCounts} emptyMessage="Tidak ada data untuk tahun yang dipilih." />
         </div>
 
         <div className="panel insight-panel status-insight-panel">
@@ -898,6 +1078,80 @@ function Overview({ records, fields, verifications, user, t, onNavigate }) {
           </div>
         </div>
       </section>
+
+      <section className="panel pokja-monitor-panel" ref={pokjaPanelRef}>
+        <div className="panel-head">
+          <div>
+            <h2>Monitoring berdasarkan Pokja</h2>
+            <p className="muted">Distribusi status verifikasi per kelompok kerja{selectedYear ? ` · ${selectedYear}` : ''}</p>
+          </div>
+          <div className="pokja-actions-wrap" ref={pokjaActionsRef} data-html2canvas-ignore="true">
+            <button type="button" className="pokja-actions-trigger" aria-label="Pengaturan diagram Pokja" aria-expanded={showPokjaActions} aria-haspopup="dialog" onClick={() => setShowPokjaActions((current) => !current)}>
+              <MoreHorizontal size={18} aria-hidden="true" />
+            </button>
+            {showPokjaActions && <div className="pokja-actions-menu" role="dialog" aria-label="Pengaturan diagram monitoring Pokja">
+              <div className="pokja-actions-heading">
+                <strong>Warna diagram</strong>
+                <span>Pilih warna tiap Pokja</span>
+              </div>
+              {pokjaGroups.map((pokjaName) => (
+                <div className="pokja-color-row" key={pokjaName}>
+                  <span>{pokjaName}</span>
+                  <button type="button" className="pokja-color-current" style={{ '--current-color': pokjaColors[pokjaName] || defaultPokjaColors[pokjaName] }} aria-label={`Atur warna ${pokjaName}`} aria-expanded={activePokjaColor === pokjaName} onClick={() => setActivePokjaColor((current) => current === pokjaName ? null : pokjaName)}>
+                    <span />
+                    <ChevronDown size={12} aria-hidden="true" />
+                  </button>
+                </div>
+              ))}
+              {activePokjaColor && <div className="pokja-wheel-editor">
+                <div className="pokja-wheel-heading">Warna {activePokjaColor}</div>
+                <IroWheelColorPicker key={activePokjaColor} color={pokjaColors[activePokjaColor] || defaultPokjaColors[activePokjaColor]} onChange={(color) => setPokjaColors((current) => ({ ...current, [activePokjaColor]: color }))} />
+                <div className="pokja-quick-colors" role="group" aria-label={`Warna cepat ${activePokjaColor}`}>
+                  {pokjaQuickColors.map((color) => (
+                    <button key={color} type="button" className="pokja-color-swatch" style={{ '--palette-color': color }} aria-label={`Pilih warna ${color}`} onClick={() => setPokjaColors((current) => ({ ...current, [activePokjaColor]: color }))}>
+                      <span />
+                    </button>
+                  ))}
+                </div>
+              </div>}
+              <button type="button" className="pokja-download-action" onClick={downloadPokjaMonitoring} disabled={isExportingPokja}>
+                <ArrowDownToLine size={15} aria-hidden="true" />
+                {isExportingPokja ? 'Menyiapkan gambar...' : 'Unduh gambar PNG'}
+              </button>
+            </div>}
+          </div>
+        </div>
+        <div className="field-monitoring-block">
+          <div className="field-monitoring-chart">
+            <div className="field-monitoring-head">
+              <h3>Monitoring bidang</h3>
+              <span>Gabungan anggaran & jumlah kelompok</span>
+            </div>
+            <CombinedPokjaDonut data={combinedPokjaSummary} totalBudget={total} year={selectedYear} />
+          </div>
+        </div>
+        <div className="pokja-donut-grid">
+          {pokjaSummary.map((pokja) => (
+            <div className="pokja-donut-card" key={pokja.name} style={{ '--pokja-card-color': pokjaColors[pokja.name] || defaultPokjaColors[pokja.name] }}>
+              <h3>{pokja.name}</h3>
+              <div className="pokja-chart-layout">
+                <VerificationStatusPie data={pokja.summary} totalCount={pokja.total} onSelect={() => {}} />
+                <ul className="pokja-legend">
+                  {pokja.summary.map((category) => (
+                    <li key={category.id} className="pokja-legend-row">
+                      <span className="status-legend-swatch" style={{ '--status-color': category.color }} />
+                      <span>{category.label}</span>
+                      <strong>{pokja.total ? formatPercentage(category.groups, pokja.total) : '0%'}</strong>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <VerificationBudgetMonitor records={records} fields={fields} getRecordYear={getRecordYear} getVerificationCategory={getVerificationCategory} getRecordBudget={getRecordBudget} normalizePokjaValue={normalizePokjaValue} years={years} pokjaGroups={pokjaGroups} year={selectedYear} />
 
       <div className="panel insight-panel full-width-panel">
         <div className="panel-head">
@@ -952,31 +1206,388 @@ function Overview({ records, fields, verifications, user, t, onNavigate }) {
   )
 }
 
+function BudgetBarChart({ chartData, totalBudget, groupCounts, emptyMessage, ariaLabel = 'Diagram batang anggaran per kabupaten/kota' }) {
+  const columnsStyle = { gridTemplateColumns: `repeat(${Math.max(chartData.length, 1)}, minmax(0, 1fr))` }
+  const maximumBudget = Math.max(...chartData.map(([, value]) => Number(value || 0)), 1)
+  const chartTicks = [maximumBudget, maximumBudget / 2, 0]
+
+  return (
+    <div className="chart-area">
+      <div className="chart-y">{chartTicks.map((tick) => <span key={tick}>{tick === 0 ? '0' : `${formatCurrency(Math.round(tick / 1000000))} jt`}</span>)}</div>
+      <div className={`chart-track ${chartData.length > 24 ? 'is-dense' : ''}`} role="region" aria-label={ariaLabel} tabIndex={0}>
+        <div className="bars" style={columnsStyle}>
+          {chartData.length ? chartData.map(([kabkot, budget]) => (
+            <div className="bar-column" key={kabkot} tabIndex={0} role="img" aria-label={`${kabkot}, anggaran Rp ${formatCurrency(budget)}, ${formatBudgetShare(budget, totalBudget)} dari total anggaran, ${formatCurrency(groupCounts[kabkot] || 0)} kelompok`}>
+              <div className="bar-tooltip" aria-hidden="true">
+                <strong>{kabkot}</strong>
+                <span>Anggaran <b>Rp {formatCurrency(budget)}</b></span>
+                <span>Persentase dari total <b>{formatBudgetShare(budget, totalBudget)}</b></span>
+                <span>Jumlah kelompok <b>{formatCurrency(groupCounts[kabkot] || 0)}</b></span>
+              </div>
+              <div className="bar-value" aria-hidden="true">{formatCompactBudget(budget)}</div>
+              <div className="bar" style={{ height: `${Math.max(12, budget / maximumBudget * 130)}px` }} />
+            </div>
+          )) : <div className="empty-chart-state">{emptyMessage}</div>}
+        </div>
+        {chartData.length > 0 && <div className="chart-x-axis" style={columnsStyle} aria-hidden="true">
+          {chartData.map(([kabkot]) => <div className="chart-x-label" key={kabkot}><span>{kabkot}</span></div>)}
+        </div>}
+      </div>
+    </div>
+  )
+}
+
+function VerificationBudgetMonitor({ records, fields, getRecordYear, getVerificationCategory, getRecordBudget, normalizePokjaValue, years, pokjaGroups, year }) {
+  const [chartYear, setChartYear] = useState(year || '')
+  const [selectedCommodity, setSelectedCommodity] = useState('')
+  const [selectedKabkots, setSelectedKabkots] = useState(null)
+  const [selectedPokja, setSelectedPokja] = useState('')
+  const [visibleSeries, setVisibleSeries] = useState(['passed', 'failed', 'other'])
+  const [activeTooltip, setActiveTooltip] = useState(null)
+  const series = [
+    { id: 'passed', label: 'Lolos', color: '#59a96d' },
+    { id: 'failed', label: 'Tidak Lolos', color: '#c45c4a' },
+    { id: 'other', label: 'Lainnya', color: '#a6aea8' },
+  ]
+  const commodityField = fields.find((field) => {
+    const key = String(field.key || '').toLowerCase()
+    const label = String(field.label || '').toLowerCase()
+    return key.includes('komoditas') || label.includes('komoditas')
+  })
+  const getRecordCommodities = (record) => {
+    const source = record.values?.komoditas_ternak ?? record.values?.komoditas ?? (commodityField ? record.values?.[commodityField.key] : '') ?? ''
+    const values = Array.isArray(source) ? source : String(source).split(/[;,]/)
+    return values.map((item) => String(item).trim()).filter(Boolean)
+  }
+  const yearRecords = chartYear ? records.filter((record) => getRecordYear(record) === chartYear) : records
+  const availableCommodities = [...new Set(yearRecords.flatMap(getRecordCommodities))].sort((left, right) => left.localeCompare(right, 'id'))
+  const availableKabkots = [...new Set(yearRecords.map((record) => String(record.values?.kabkot || 'Lainnya').trim() || 'Lainnya'))].sort((left, right) => left.localeCompare(right, 'id'))
+  const filteredRecords = yearRecords.filter((record) => {
+    const kabkot = String(record.values?.kabkot || 'Lainnya').trim() || 'Lainnya'
+    const rawPokja = record.values?.pokja ?? record.values?.pokja_pengampu ?? ''
+    const matchesKabkot = selectedKabkots === null || selectedKabkots.includes(kabkot)
+    const matchesPokja = !selectedPokja || normalizePokjaValue(rawPokja) === selectedPokja
+    const matchesCommodity = !selectedCommodity || getRecordCommodities(record).includes(selectedCommodity)
+    return matchesKabkot && matchesPokja && matchesCommodity
+  })
+  const kabkotSummary = new Map()
+
+  filteredRecords.forEach((record) => {
+    const kabkot = String(record.values?.kabkot || 'Lainnya').trim() || 'Lainnya'
+    const category = getVerificationCategory(record)
+    const seriesId = category === 'passed' || category === 'failed' ? category : 'other'
+    const budget = getRecordBudget(record)
+    const locationSummary = kabkotSummary.get(kabkot) || Object.fromEntries(series.map((item) => [item.id, { budget: 0, groups: 0 }]))
+    locationSummary[seriesId].budget += budget
+    locationSummary[seriesId].groups += 1
+    kabkotSummary.set(kabkot, locationSummary)
+  })
+
+  const chartData = [...kabkotSummary.entries()]
+    .map(([kabkot, values]) => ({ kabkot, values, total: series.reduce((sum, item) => sum + values[item.id].budget, 0) }))
+    .sort((left, right) => right.total - left.total)
+  const seriesTotals = series.map((item) => ({
+    ...item,
+    budget: chartData.reduce((sum, city) => sum + city.values[item.id].budget, 0),
+    groups: chartData.reduce((sum, city) => sum + city.values[item.id].groups, 0),
+  }))
+  const activeSeries = series.filter((item) => visibleSeries.includes(item.id))
+  const totalGroups = seriesTotals.filter((item) => visibleSeries.includes(item.id)).reduce((sum, item) => sum + item.groups, 0)
+  const maxBudget = Math.max(1, ...chartData.flatMap((city) => activeSeries.map((item) => city.values[item.id].budget)))
+  const chartTicks = [maxBudget, maxBudget / 2, 0]
+  const chartWidth = Math.max(chartData.length * 52, 1)
+  const chartColumnsStyle = { gridTemplateColumns: `repeat(${Math.max(chartData.length, 1)}, minmax(0, 1fr))`, minWidth: `${chartWidth}px` }
+  const selectedCount = selectedKabkots === null ? availableKabkots.length : selectedKabkots.length
+  const showBarTooltip = (kabkot, item, result, event) => {
+    const bounds = event.currentTarget.getBoundingClientRect()
+    const halfWidth = Math.min(110, window.innerWidth / 2 - 16)
+    const pointerX = bounds.left + bounds.width / 2
+    setActiveTooltip({
+      kabkot,
+      item,
+      result,
+      categoryTotal: seriesTotals.find((total) => total.id === item.id)?.budget || 0,
+      left: Math.min(Math.max(pointerX, halfWidth + 16), window.innerWidth - halfWidth - 16),
+      top: Math.max(100, bounds.top - 8),
+    })
+  }
+  const toggleKabkot = (kabkot, checked) => {
+    const current = selectedKabkots === null ? availableKabkots : selectedKabkots
+    const next = checked ? [...new Set([...current, kabkot])] : current.filter((item) => item !== kabkot)
+    setSelectedKabkots(next.length === availableKabkots.length ? null : next)
+  }
+  const toggleSeries = (seriesId, checked) => {
+    setActiveTooltip(null)
+    setVisibleSeries((current) => checked ? [...current, seriesId] : current.filter((item) => item !== seriesId))
+  }
+
+  useEffect(() => {
+    setChartYear(year || '')
+    setSelectedCommodity('')
+    setSelectedKabkots(null)
+  }, [year])
+
+  return (
+    <section className="panel verification-budget-panel">
+      <div className="panel-head verification-budget-head">
+        <div>
+          <h2>Monitoring pagu anggaran berdasarkan hasil verifikasi</h2>
+          <p className="muted">Perbandingan hasil verifikasi per kabupaten/kota</p>
+        </div>
+        <div className="verification-budget-filters">
+          <label className="verification-filter-control">
+            <span>Komoditas</span>
+            <select value={selectedCommodity} onChange={(event) => setSelectedCommodity(event.target.value)} aria-label="Filter komoditas">
+              <option value="">Semua komoditas</option>
+              {availableCommodities.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+          </label>
+          <label className="verification-filter-control">
+            <span>Tahun</span>
+            <select value={chartYear} onChange={(event) => { setChartYear(event.target.value); setSelectedKabkots(null) }} aria-label="Filter tahun anggaran">
+              <option value="">Semua tahun</option>
+              {years.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+          </label>
+          <details className="kabkot-checklist">
+            <summary aria-label="Filter kabupaten atau kota">{selectedCount === availableKabkots.length ? 'Semua Kab/Kota' : `${selectedCount} Kab/Kota`} <ChevronDown size={13} /></summary>
+            <div className="kabkot-checklist-menu">
+              <div className="kabkot-checklist-actions">
+                <button type="button" onClick={() => setSelectedKabkots(null)}>Pilih semua</button>
+                <button type="button" onClick={() => setSelectedKabkots([])}>Tidak pilih semua</button>
+              </div>
+              {availableKabkots.map((kabkot) => (
+                <label key={kabkot}>
+                  <input type="checkbox" checked={selectedKabkots === null || selectedKabkots.includes(kabkot)} onChange={(event) => toggleKabkot(kabkot, event.target.checked)} />
+                  <span>{kabkot}</span>
+                </label>
+              ))}
+            </div>
+          </details>
+          <label className="verification-filter-control">
+            <span>Pokja</span>
+            <select value={selectedPokja} onChange={(event) => setSelectedPokja(event.target.value)} aria-label="Filter Pokja">
+              <option value="">Semua Pokja</option>
+              {pokjaGroups.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+          </label>
+        </div>
+      </div>
+      <div className="verification-budget-summary">
+        <span>{formatCurrency(selectedCount)} kabupaten/kota · {formatCurrency(totalGroups)} kelompok</span>
+        <div className="verification-series-legend" role="group" aria-label="Tampilkan seri hasil verifikasi">
+          {seriesTotals.map((item) => <label className="verification-series-toggle" key={item.id}>
+            <input type="checkbox" checked={visibleSeries.includes(item.id)} style={{ '--series-color': item.color }} onChange={(event) => toggleSeries(item.id, event.target.checked)} />
+            <span>{item.label}</span>
+          </label>)}
+        </div>
+      </div>
+      <div className="chart-area verification-chart-area">
+        <div className="chart-y">{chartTicks.map((tick) => <span key={tick}>{tick === 0 ? '0' : `${formatCurrency(Math.round(tick / 1000000))} jt`}</span>)}</div>
+        <div className="chart-track verification-chart-track" role="region" aria-label="Diagram batang anggaran lolos, tidak lolos, dan lainnya per kabupaten/kota" tabIndex={0}>
+          {chartData.length && activeSeries.length ? <>
+            <div className="verification-bars" style={chartColumnsStyle}>
+              {chartData.map(({ kabkot, values }) => (
+                <div className="verification-city-group" key={kabkot}>
+                  <div className="verification-city-bars">
+                    {activeSeries.map((item) => {
+                      const result = values[item.id]
+                      return <div className="verification-bar-column" key={item.id} tabIndex={0} role="img" aria-label={`${kabkot}, ${item.label}, anggaran Rp ${formatCurrency(result.budget)}, ${formatCurrency(result.groups)} kelompok`} onMouseEnter={(event) => showBarTooltip(kabkot, item, result, event)} onMouseLeave={() => setActiveTooltip(null)} onFocus={(event) => showBarTooltip(kabkot, item, result, event)} onBlur={() => setActiveTooltip(null)}>
+                        <div className="verification-bar" style={{ '--series-color': item.color, height: result.budget ? `${Math.max(4, result.budget / maxBudget * 130)}px` : '0px' }} />
+                      </div>
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="chart-x-axis verification-chart-x-axis" style={chartColumnsStyle} aria-hidden="true">
+              {chartData.map(({ kabkot }) => <div className="chart-x-label" key={kabkot}><span>{kabkot}</span></div>)}
+            </div>
+          </> : <div className="verification-chart-empty">{chartData.length ? 'Pilih setidaknya satu hasil verifikasi.' : 'Tidak ada data untuk filter yang dipilih.'}</div>}
+        </div>
+      </div>
+      {activeTooltip && <div className="bar-tooltip verification-bar-tooltip-overlay" data-series={activeTooltip.item.id} role="tooltip" style={{ left: activeTooltip.left, top: activeTooltip.top }}>
+        <strong>{activeTooltip.kabkot} · {activeTooltip.item.label}</strong>
+        <span>Anggaran <b>Rp {formatCurrency(activeTooltip.result.budget)}</b></span>
+        <span>Persentase kategori <b>{formatBudgetShare(activeTooltip.result.budget, activeTooltip.categoryTotal)}</b></span>
+        <span>Jumlah kelompok <b>{formatCurrency(activeTooltip.result.groups)}</b></span>
+      </div>}
+    </section>
+  )
+}
+
 function VerificationStatusPie({ data, totalCount, onSelect }) {
   const radius = 66
   const circumference = 2 * Math.PI * radius
+  const wrapperRef = useRef(null)
+  const [tooltip, setTooltip] = useState(null)
   let offset = 0
+  const showTooltip = (category, event) => {
+    const bounds = wrapperRef.current?.getBoundingClientRect()
+    if (!bounds) return
+    const halfWidth = Math.max(0, Math.min(110, bounds.width / 2 - 8))
+    const pointerX = event?.clientX != null ? event.clientX - bounds.left : bounds.width / 2
+    const pointerY = event?.clientY != null ? event.clientY - bounds.top : 110
+    setTooltip({
+      category,
+      x: Math.min(Math.max(pointerX, halfWidth), bounds.width - halfWidth),
+      y: Math.max(pointerY, 64),
+    })
+    onSelect(category.id)
+  }
 
   return (
-    <svg className="status-pie" viewBox="0 0 160 160" role="img" aria-label="Diagram persentase status verifikasi kelompok">
-      <circle cx="80" cy="80" r={radius} fill="none" stroke="var(--line)" strokeWidth="23" />
-      {data.map((category) => {
-        const segmentLength = circumference * category.percentage
-        const visibleLength = Math.max(0, segmentLength - (category.groups ? 2 : 0))
-        const currentOffset = offset
-        offset += segmentLength
-        if (!category.groups) return null
-        return <circle key={category.id} className="status-pie-segment" cx="80" cy="80" r={radius} fill="none" stroke={category.color} strokeWidth="23" strokeDasharray={`${visibleLength} ${circumference - visibleLength}`} strokeDashoffset={-currentOffset} transform="rotate(-90 80 80)" tabIndex={0} role="button" aria-label={`${category.label}: ${formatPercentage(category.groups, totalCount)}, ${formatCurrency(category.groups)} kelompok, anggaran Rp ${formatCurrency(category.budget)}`} onMouseEnter={() => onSelect(category.id)} onFocus={() => onSelect(category.id)} />
-      })}
-      <text className="status-pie-total" x="80" y="78" textAnchor="middle">{formatCurrency(totalCount)}</text>
-      <text className="status-pie-caption" x="80" y="96" textAnchor="middle">KELOMPOK</text>
-    </svg>
+    <div className="donut-tooltip-wrap" ref={wrapperRef} onMouseLeave={() => setTooltip(null)}>
+      {tooltip && <div className="donut-tooltip" role="tooltip" style={{ left: tooltip.x, top: tooltip.y }}>
+        <strong>{tooltip.category.label}</strong>
+        <span>Persentase <b>{formatPercentage(tooltip.category.groups, totalCount)}</b></span>
+        <span>Jumlah kelompok <b>{formatCurrency(tooltip.category.groups)}</b></span>
+        <span>Jumlah anggaran <b>Rp {formatCurrency(tooltip.category.budget)}</b></span>
+      </div>}
+      <svg className="status-pie" viewBox="0 0 160 160" role="img" aria-label="Diagram persentase status verifikasi kelompok">
+        <circle cx="80" cy="80" r={radius} fill="none" stroke="var(--line)" strokeWidth="23" />
+        {data.map((category) => {
+          const segmentLength = circumference * category.percentage
+          const visibleLength = Math.max(0, segmentLength - (category.groups ? 2 : 0))
+          const currentOffset = offset
+          offset += segmentLength
+          if (!category.groups) return null
+          return <circle key={category.id} className="status-pie-segment" cx="80" cy="80" r={radius} fill="none" stroke={category.color} strokeWidth="23" strokeDasharray={`${visibleLength} ${circumference - visibleLength}`} strokeDashoffset={-currentOffset} transform="rotate(-90 80 80)" tabIndex={0} role="button" aria-label={`${category.label}: ${formatPercentage(category.groups, totalCount)}, ${formatCurrency(category.groups)} kelompok, anggaran Rp ${formatCurrency(category.budget)}`} onMouseEnter={(event) => showTooltip(category, event)} onMouseMove={(event) => showTooltip(category, event)} onFocus={() => showTooltip(category)} onBlur={() => setTooltip(null)} />
+        })}
+        <text className="status-pie-total" x="80" y="78" textAnchor="middle">{formatCurrency(totalCount)}</text>
+        <text className="status-pie-caption" x="80" y="96" textAnchor="middle">KELOMPOK</text>
+      </svg>
+    </div>
   )
+}
+
+function CombinedPokjaDonut({ data, totalBudget, year }) {
+  if (!data.length) return null
+  const radius = 60
+  const circumference = 2 * Math.PI * radius
+  const totalShare = data.reduce((sum, item) => sum + item.combinedShare, 0) || 1
+  const wrapperRef = useRef(null)
+  const [tooltip, setTooltip] = useState(null)
+  const [selectedId, setSelectedId] = useState(null)
+  const selectedItem = data.find((item) => item.id === selectedId)
+  let offset = 0
+  const showTooltip = (item, event) => {
+    const bounds = wrapperRef.current?.getBoundingClientRect()
+    if (!bounds) return
+    const halfWidth = Math.max(0, Math.min(110, bounds.width / 2 - 8))
+    const pointerX = event?.clientX != null ? event.clientX - bounds.left : bounds.width / 2
+    const pointerY = event?.clientY != null ? event.clientY - bounds.top : 110
+    setTooltip({
+      item,
+      x: Math.min(Math.max(pointerX, halfWidth), bounds.width - halfWidth),
+      y: Math.max(pointerY, 64),
+    })
+  }
+
+  return (
+    <div className="field-monitoring-layout">
+      <div className="donut-tooltip-wrap combined-donut-tooltip-wrap" ref={wrapperRef} onMouseLeave={() => setTooltip(null)}>
+        {tooltip && <div className="donut-tooltip" role="tooltip" style={{ left: tooltip.x, top: tooltip.y }}>
+          <strong>{tooltip.item.label}</strong>
+          <span>Persentase anggaran <b>{formatPercentage(tooltip.item.totalBudget, totalBudget)}</b></span>
+          <span>Jumlah kelompok <b>{formatCurrency(tooltip.item.totalGroups)}</b></span>
+          <span>Jumlah anggaran <b>Rp {formatCurrency(tooltip.item.totalBudget)}</b></span>
+        </div>}
+        <svg className="field-monitoring-donut" viewBox="0 0 180 180" role="img" aria-label="Diagram gabungan anggaran dan jumlah kelompok per pokja">
+          <circle cx="90" cy="90" r={radius} fill="none" stroke="var(--line)" strokeWidth="22" />
+          {data.map((item) => {
+            const segmentLength = circumference * (item.combinedShare / totalShare)
+            const currentOffset = offset
+            offset += segmentLength
+            return <circle key={item.id} cx="90" cy="90" r={radius} fill="none" stroke={item.color} strokeWidth="22" strokeDasharray={`${Math.max(0, segmentLength - 2)} ${circumference - Math.max(0, segmentLength - 2)}`} strokeDashoffset={-currentOffset} transform="rotate(-90 90 90)" className="combined-pokja-segment" tabIndex={0} role="button" aria-pressed={selectedId === item.id} aria-label={`${item.label}: klik untuk melihat rincian`} onMouseEnter={(event) => showTooltip(item, event)} onMouseMove={(event) => showTooltip(item, event)} onClick={(event) => { setSelectedId(item.id); showTooltip(item, event) }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedId(item.id) } }} onFocus={() => showTooltip(item)} onBlur={() => setTooltip(null)} />
+          })}
+          <text x="90" y="82" textAnchor="middle" className="field-monitoring-total">{data.length}</text>
+          <text x="90" y="102" textAnchor="middle" className="field-monitoring-caption">POKJA</text>
+        </svg>
+      </div>
+      <ul className="field-monitoring-legend" aria-label="Legenda Pokja">
+        {data.map((item) => (
+          <li key={item.id}>
+            <button type="button" aria-pressed={selectedId === item.id} onClick={() => setSelectedId(item.id)}>
+              <span className="status-legend-swatch" style={{ '--status-color': item.color }} />
+              <span>{item.label}</span>
+              <strong>Rp {formatCurrency(item.totalBudget)}</strong>
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className={`field-monitoring-preview ${selectedItem ? 'has-selection' : ''}`} aria-live="polite">
+        {selectedItem ? <>
+          <div className="field-preview-heading">
+            <span className="status-legend-swatch" style={{ '--status-color': selectedItem.color }} />
+            <div>
+              <span className="field-preview-year">Tahun anggaran {year || 'semua tahun'}</span>
+              <h4>{selectedItem.label}</h4>
+            </div>
+          </div>
+          <div className="field-preview-metrics">
+            <div><span>Jumlah kelompok</span><strong>{formatCurrency(selectedItem.totalGroups)}</strong></div>
+            <div><span>Jumlah anggaran</span><strong>Rp {formatCurrency(selectedItem.totalBudget)}</strong></div>
+            <div><span>Persentase anggaran Pokja</span><strong>{formatPercentage(selectedItem.totalBudget, totalBudget)}</strong></div>
+          </div>
+        </> : <p className="field-preview-empty">Klik salah satu irisan diagram untuk melihat rincian Pokja.</p>}
+      </div>
+    </div>
+  )
+}
+
+function IroWheelColorPicker({ color, onChange }) {
+  const pickerNodeRef = useRef(null)
+  const pickerRef = useRef(null)
+  const onChangeRef = useRef(onChange)
+
+  useEffect(() => {
+    onChangeRef.current = onChange
+  }, [onChange])
+
+  useEffect(() => {
+    let mounted = true
+    let picker
+    let handleColorChange
+
+    import('@jaames/iro').then(({ default: iro }) => {
+      if (!mounted || !pickerNodeRef.current) return
+      picker = new iro.ColorPicker(pickerNodeRef.current, {
+        width: 214,
+        color,
+        borderWidth: 1,
+        borderColor: '#dbe5e7',
+        layout: [
+          { component: iro.ui.Wheel },
+          { component: iro.ui.Slider, options: { sliderType: 'alpha' } },
+        ],
+      })
+      handleColorChange = (nextColor) => onChangeRef.current(nextColor.hex8String)
+      picker.on('color:change', handleColorChange)
+      pickerRef.current = picker
+    })
+
+    return () => {
+      mounted = false
+      if (picker && handleColorChange) picker.off('color:change', handleColorChange)
+      pickerRef.current = null
+      pickerNodeRef.current?.replaceChildren()
+    }
+  }, [])
+
+  useEffect(() => {
+    const picker = pickerRef.current
+    if (picker && picker.color.hex8String.toLowerCase() !== color.toLowerCase()) {
+      picker.color.hex8String = color
+    }
+  }, [color])
+
+  return <div className="iro-wheel-host" ref={pickerNodeRef} />
 }
 
 function BudgetMoneyIcon({ size }) { return <span className="budget-money-icon" style={{ '--icon-size': `${size}px` }} aria-hidden="true"><Banknote className="budget-money-note" /><Coins className="budget-money-coins" /></span> }
 
-function StatCard({ icon: Icon, label, value, change, tone, negative }) { return <div className="stat-card"><div className={`stat-icon ${tone}`}><Icon size={19} /></div><div className="stat-body"><span>{label}</span><strong>{value}</strong><small className={negative ? 'negative' : ''}><span>{negative ? '↓' : '↑'}</span> {change} <em>dari bulan lalu</em></small></div><MoreHorizontal className="stat-more" size={17} /></div> }
+function StatCard({ icon: Icon, label, value, change, tone, negative }) { return <div className={`stat-card stat-card-${tone}`}><div className={`stat-icon ${tone}`}><Icon size={19} /></div><div className="stat-body"><span>{label}</span><strong>{value}</strong><small className={negative ? 'negative' : ''}><span>{negative ? '↓' : '↑'}</span> {change} <em>dari bulan lalu</em></small></div><MoreHorizontal className="stat-more" size={17} /></div> }
 function VerificationFieldsPage({ fields, setFields }) {
   const [editing, setEditing] = useState(null)
   const [showForm, setShowForm] = useState(false)
@@ -1219,7 +1830,7 @@ function RecordTable({ records, fields, onEdit, onDelete, onSelect, onVerify, ve
   const tableFields = fields.filter(isDataField)
   return <div className={`table-scroll ${compact ? 'compact-table' : ''}`}><table><thead><tr><th className="select-column"><input type="checkbox" /></th>{!compact && <th className="actions-column">Aksi</th>}<th className="row-number-column">No Urut</th><th className="grant-id-column">No ID</th><th>Nama kelompok <ArrowUpDown size={13} /></th>{tableFields.slice(0, compact ? 2 : 4).map((field) => <th key={field.id}>{field.label} <ArrowUpDown size={13} /></th>)}<th>Status</th></tr></thead><tbody>{records.map((record, index) => {
     const verification = verifications.find((item) => item.hibahId === record.id)
-    return <tr key={record.id} onClick={() => onSelect?.(record)}><td className="select-column"><input type="checkbox" onClick={(event) => event.stopPropagation()} /></td>{!compact && <td className="actions-column"><div className="row-actions"><button onClick={(event) => { event.stopPropagation(); onVerify?.(record) }} title={verification ? 'Edit verifikasi data' : 'Verifikasi data'} aria-label={`${verification ? 'Edit verifikasi data' : 'Verifikasi data'} ${record.values.nama_kelompok}`}><ClipboardCheck size={15} /></button><button onClick={(event) => { event.stopPropagation(); onEdit(record) }} title="Edit" aria-label={`Edit ${record.values.nama_kelompok}`}><Pencil size={15} /></button><button onClick={(event) => { event.stopPropagation(); onDelete(record.id) }} title="Hapus" aria-label={`Hapus ${record.values.nama_kelompok}`}><Trash2 size={15} /></button></div></td>}<td className="row-number-column">{index + 1}</td><td className="grant-id-column">{record.noId || formatGrantId(index + 1)}</td><td><div className="name-cell"><span className="record-avatar">{record.values.nama_kelompok?.slice(0, 2).toUpperCase()}</span><span><strong>{record.values.nama_kelompok}</strong><small>Dibuat {record.createdAt}</small></span></div></td>{tableFields.slice(0, compact ? 2 : 4).map((field) => <td key={field.id}>{field.type === 'currency' || field.key === 'nilai_bantuan' ? formatBudget(record.values[field.key]) : Array.isArray(record.values[field.key]) ? record.values[field.key].join(', ') : record.values[field.key] || '-'}</td>)}<td><span className={`status status-${record.status.toLowerCase()}`}>{record.status}</span>{verification && <small className={`verification-inline-status verification-${verification.status.toLowerCase().replace(/\s/g, '-')}`}>{verification.status}</small>}</td></tr>
+    return <tr key={record.id} onClick={() => onSelect?.(record)}><td className="select-column"><input type="checkbox" onClick={(event) => event.stopPropagation()} /></td>{!compact && <td className="actions-column"><div className="row-actions"><button className="row-action-verify" onClick={(event) => { event.stopPropagation(); onVerify?.(record) }} title={verification ? 'Edit verifikasi data' : 'Verifikasi data'} aria-label={`${verification ? 'Edit verifikasi data' : 'Verifikasi data'} ${record.values.nama_kelompok}`}><ClipboardCheck size={15} /></button><button className="row-action-edit" onClick={(event) => { event.stopPropagation(); onEdit(record) }} title="Edit" aria-label={`Edit ${record.values.nama_kelompok}`}><Pencil size={15} /></button><button className="row-action-delete" onClick={(event) => { event.stopPropagation(); onDelete(record.id) }} title="Hapus" aria-label={`Hapus ${record.values.nama_kelompok}`}><Trash2 size={15} /></button></div></td>}<td className="row-number-column">{index + 1}</td><td className="grant-id-column">{record.noId || formatGrantId(index + 1)}</td><td><div className="name-cell"><span className="record-avatar">{record.values.nama_kelompok?.slice(0, 2).toUpperCase()}</span><span><strong>{record.values.nama_kelompok}</strong><small>Dibuat {record.createdAt}</small></span></div></td>{tableFields.slice(0, compact ? 2 : 4).map((field) => <td key={field.id}>{field.type === 'currency' || field.key === 'nilai_bantuan' ? formatBudget(record.values[field.key]) : Array.isArray(record.values[field.key]) ? record.values[field.key].join(', ') : record.values[field.key] || '-'}</td>)}<td><span className={`status status-${record.status.toLowerCase()}`}>{record.status}</span>{verification && <small className={`verification-inline-status verification-${verification.status.toLowerCase().replace(/\s/g, '-')}`}>{verification.status}</small>}</td></tr>
   })}</tbody></table>{!records.length && <div className="empty-state">{emptyMessage}</div>}</div>
 }
 

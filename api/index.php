@@ -12,6 +12,11 @@ function respond(array $payload, int $status = 200): never
     exit;
 }
 
+if (($_GET['action'] ?? '') === 'time' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
+    $serverTime = new DateTimeImmutable('now', new DateTimeZone('Asia/Jakarta'));
+    respond(['timestamp' => $serverTime->format(DATE_ATOM)]);
+}
+
 function requestBody(): array
 {
     $body = json_decode(file_get_contents('php://input'), true);
