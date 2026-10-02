@@ -6,15 +6,15 @@ import {
   Activity,
   ArrowDownToLine,
   ArrowUpDown,
-  BarChart3,
+  Banknote,
   Bell,
   BookOpen,
   Check,
   ChevronDown,
   ChevronUp,
   ClipboardCheck,
-  ClipboardList,
   Copy,
+  Coins,
   Database,
   Eye,
   EyeOff,
@@ -41,6 +41,8 @@ import {
   UsersRound,
   Upload,
   X,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react'
 import './styles.css'
 
@@ -279,6 +281,15 @@ function formatCurrency(value) {
   return new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(Number(value || 0))
 }
 
+function formatPercentage(value, total) {
+  if (!total) return '0%'
+  return `${new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 }).format((value / total) * 100)}%`
+}
+
+function formatBudgetShare(value, total) {
+  return formatPercentage(value, total)
+}
+
 function formatBudget(value) {
   const digits = String(value ?? '').replace(/\D/g, '')
   return digits ? `Rp ${formatCurrency(digits)}` : ''
@@ -306,6 +317,99 @@ function getNextGrantId(records) {
     return Number.isFinite(number) ? Math.max(max, number) : max
   }, 0)
   return formatGrantId(highest + 1)
+}
+
+function normalizeColumnName(value) {
+  return String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+function getGrantExportData(records, fields) {
+  const dataFields = fields.filter((field) => isDataField(field) && field.key !== 'nama_kelompok')
+  const columns = [
+    { label: 'No ID', value: (record) => record.noId || '' },
+    { label: 'Nama kelompok', value: (record) => record.values?.nama_kelompok || '' },
+    ...dataFields.map((field) => ({ label: field.label, value: (record) => record.values?.[field.key] })),
+    { label: 'Status', value: (record) => record.status || '' },
+    { label: 'Dibuat', value: (record) => record.createdAt || '' },
+  ]
+  const rows = records.map((record) => columns.map(({ value }) => {
+    const cell = value(record)
+    return Array.isArray(cell) ? cell.join(', ') : cell && typeof cell === 'object' ? JSON.stringify(cell) : String(cell ?? '')
+  }))
+  return { headers: columns.map(({ label }) => label), rows }
+}
+
+function downloadFile(blob, filename) {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.hidden = true
+  document.body.append(link)
+  link.click()
+  window.setTimeout(() => {
+    link.remove()
+    URL.revokeObjectURL(url)
+  }, 1000)
+}
+
+async function exportGrantData(format, records, fields) {
+  const { headers, rows } = getGrantExportData(records, fields)
+  const fileDate = new Date().toISOString().slice(0, 10)
+  const filename = `e-hibah-${fileDate}`
+  if (format === 'csv') {
+    const csvCell = (value) => {
+      const safeValue = /^[\s]*[=+@\-\t\r]/.test(value) ? `'${value}` : value
+      return `"${safeValue.replace(/"/g, '""')}"`
+    }
+    const csv = [headers, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n')
+    downloadFile(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' }), `${filename}.csv`)
+    return
+  }
+  if (format === 'xls') {
+    const XLSX = await import('@e965/xlsx')
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([headers, ...rows]), 'Database Hibah')
+    XLSX.writeFile(workbook, `${filename}.xls`, { bookType: 'xls' })
+    return
+  }
+  const [{ jsPDF }, autoTableModule] = await Promise.all([import('jspdf'), import('jspdf-autotable')])
+  const document = new jsPDF({ orientation: 'landscape' })
+  autoTableModule.default(document, { head: [headers], body: rows, styles: { fontSize: 7, cellPadding: 2 }, headStyles: { fillColor: [35, 107, 72] } })
+  document.save(`${filename}.pdf`)
+}
+
+async function readGrantImport(file, fields) {
+  const XLSX = await import('@e965/xlsx')
+  const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: false })
+  const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
+  if (!firstSheet) throw new Error('File Excel tidak memiliki sheet yang dapat dibaca.')
+  const [headerRow = [], ...dataRows] = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '', raw: false })
+  const columnIndexes = new Map(headerRow.map((header, index) => [normalizeColumnName(header), index]))
+  const findColumn = (...names) => names.map(normalizeColumnName).map((name) => columnIndexes.get(name)).find((index) => index !== undefined)
+  const nameIndex = findColumn('nama_kelompok', 'Nama kelompok', 'Nama kelompok penerima')
+  if (nameIndex === undefined) throw new Error('Kolom Nama kelompok tidak ditemukan. Gunakan key field atau label field sebagai header.')
+  const idIndex = findColumn('noId', 'No ID', 'ID')
+  const statusIndex = findColumn('status', 'Status')
+  const createdAtIndex = findColumn('createdAt', 'Dibuat')
+  const fieldColumns = fields.filter((field) => isDataField(field)).map((field) => ({
+    field,
+    index: findColumn(field.key, field.label),
+  })).filter(({ index }) => index !== undefined)
+  return dataRows.map((row) => {
+    const values = {}
+    fieldColumns.forEach(({ field, index }) => {
+      const value = row[index]
+      values[field.key] = field.type === 'checklist' && value ? String(value).split(/[;,]/).map((item) => item.trim()).filter(Boolean) : String(value ?? '').trim()
+    })
+    values.nama_kelompok = String(row[nameIndex] ?? '').trim()
+    return {
+      noId: idIndex === undefined ? '' : String(row[idIndex] ?? '').trim(),
+      status: statusIndex === undefined ? '' : String(row[statusIndex] ?? '').trim(),
+      createdAt: createdAtIndex === undefined ? '' : String(row[createdAtIndex] ?? '').trim(),
+      values,
+    }
+  }).filter((row) => row.values.nama_kelompok)
 }
 
 function App() {
@@ -410,7 +514,7 @@ function App() {
   const logout = () => { fetch('/api/index.php?action=logout', { method: 'POST' }).catch((error) => console.error('Gagal mengakhiri sesi server:', error)); localStorage.removeItem('hibah-auth'); localStorage.removeItem('hibah-user-id'); setActiveUserId(null); setIsLoggedIn(false) }
   const activeUser = users.find((user) => user.id === activeUserId) || users.filter((user) => user.role === role && user.status === 'Aktif').at(-1) || users[0]
   const visibleFields = fields.filter((field) => field.active)
-  const translations = language === 'id' ? { dashboard: 'Ringkasan', database: 'Database hibah', fields: 'Config field', settings: 'Pengaturan', welcome: 'Selamat datang kembali', records: 'Total pengajuan', approved: 'Disetujui', pending: 'Dalam proses', value: 'Total nilai bantuan', recent: 'Pengajuan terbaru' } : { dashboard: 'Overview', database: 'Grant database', fields: 'Field config', settings: 'Settings', welcome: 'Welcome back', records: 'Total applications', approved: 'Approved', pending: 'In progress', value: 'Total grant value', recent: 'Recent applications' }
+  const translations = language === 'id' ? { dashboard: 'Ringkasan', database: 'Database hibah', fields: 'Config field', settings: 'Pengaturan', welcome: 'Selamat datang kembali', records: 'Total Kelompok', approved: 'Disetujui', pending: 'Dalam proses', value: 'Pagu Anggaran', recent: 'Pengajuan terbaru' } : { dashboard: 'Overview', database: 'Grant database', fields: 'Field config', settings: 'Settings', welcome: 'Welcome back', records: 'Total groups', approved: 'Approved', pending: 'In progress', value: 'Budget allocation', recent: 'Recent applications' }
 
   if (!isLoggedIn) return <LoginScreen onSubmit={login} error={loginError} isLoggingIn={isLoggingIn} loginSuccessName={loginSuccessName} role={role} setRole={setRole} />
 
@@ -420,8 +524,8 @@ function App() {
       <main className="main-content">
         <Topbar onMenu={() => setMobileMenuOpen((current) => !current)} user={activeUser} theme={theme} setTheme={setTheme} language={language} setLanguage={setLanguage} t={translations} profileMenuOpen={profileMenuOpen} onProfileMenu={() => setProfileMenuOpen((current) => !current)} onManageAccount={() => { setProfileMenuOpen(false); setAccountModalOpen(true) }} onLogout={() => { setProfileMenuOpen(false); setShowLogoutConfirm(true) }} onSync={syncNow} syncStatus={syncStatus} lastSyncAt={lastSyncAt} />
         <div className="content-wrap" data-page={activePage}>
-          {activePage === 'overview' && <Overview records={records} fields={visibleFields} user={activeUser} t={translations} onNavigate={setActivePage} />}
-          {activePage === 'database' && <DatabasePage records={records} setRecords={setRecords} fields={visibleFields} allFields={fields} verificationFields={verificationFields} verifications={verifications} setVerifications={setVerifications} user={activeUser} role={role} t={translations} />}
+          {activePage === 'overview' && <Overview records={records} fields={visibleFields} verifications={verifications} user={activeUser} t={translations} onNavigate={setActivePage} />}
+          {activePage === 'database' && <DatabasePage key={activeUser.id} records={records} setRecords={setRecords} fields={visibleFields} allFields={fields} verificationFields={verificationFields} verifications={verifications} setVerifications={setVerifications} user={activeUser} role={role} t={translations} />}
           {activePage === 'fields' && role === 'superadmin' && <FieldsPageBackup fields={fields} setFields={setFields} />}
           {activePage === 'fields' && role !== 'superadmin' && <AccessDenied onBack={() => setActivePage('overview')} />}
           {activePage === 'verification-config' && role === 'superadmin' && <VerificationFieldsPage fields={verificationFields} setFields={setVerificationFields} />}
@@ -471,18 +575,406 @@ function Topbar({ onMenu, user, theme, setTheme, language, setLanguage, t, profi
 
 function AccountModal({ user, onClose, onSave }) {
   const [value, setValue] = useState({ ...user, password: '' })
+  const [photoDraft, setPhotoDraft] = useState(null)
+  const [cropZoom, setCropZoom] = useState(1)
+  const [cropOffset, setCropOffset] = useState({ x: 0, y: 0 })
+  const dragRef = useRef(null)
   const update = (key, next) => setValue((current) => ({ ...current, [key]: next }))
-  const handlePhoto = (event) => { const file = event.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = () => update('photo', reader.result); reader.readAsDataURL(file) }
-  return <div className="modal-backdrop"><div className="modal account-modal"><div className="modal-head"><div><p className="eyebrow">PENGELOLAAN AKUN</p><h2>Kelola akun</h2></div><button className="close-btn" onClick={onClose} aria-label="Tutup"><X size={19} /></button></div><form onSubmit={(event) => { event.preventDefault(); onSave({ ...value, password: value.password || user.password }) }}><div className="account-form"><div className="account-photo-preview">{value.photo ? <img src={value.photo} alt="Foto profil" /> : getUserInitials(value)}</div><label className="field-group">Foto profil<input type="file" accept="image/*" onChange={handlePhoto} /></label><label className="field-group">Username <b>*</b><input required value={value.username || ''} onChange={(event) => update('username', event.target.value.toLowerCase().replace(/\s/g, ''))} /></label><label className="field-group">Email <b>*</b><input required type="email" value={value.email || ''} onChange={(event) => update('email', event.target.value)} /></label><label className="field-group full-span">Password baru<small className="field-hint">Kosongkan jika password tidak diubah.</small><input type="password" value={value.password || ''} onChange={(event) => update('password', event.target.value)} placeholder="Masukkan password baru" /></label></div><div className="modal-foot"><button type="button" className="secondary-btn" onClick={onClose}>Batal</button><button type="submit" className="primary-btn"><Check size={16} /> Simpan akun</button></div></form></div></div>
+  const cropSize = 240
+  const baseScale = photoDraft ? Math.max(cropSize / photoDraft.width, cropSize / photoDraft.height) : 1
+  const renderedWidth = photoDraft ? photoDraft.width * baseScale * cropZoom : cropSize
+  const renderedHeight = photoDraft ? photoDraft.height * baseScale * cropZoom : cropSize
+  const maxOffsetX = Math.max(0, (renderedWidth - cropSize) / 2)
+  const maxOffsetY = Math.max(0, (renderedHeight - cropSize) / 2)
+  const displayedOffset = {
+    x: Math.max(-maxOffsetX, Math.min(maxOffsetX, cropOffset.x)),
+    y: Math.max(-maxOffsetY, Math.min(maxOffsetY, cropOffset.y)),
+  }
+  const handlePhoto = (event) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const image = new Image()
+      image.onload = () => {
+        setPhotoDraft({ src: String(reader.result), width: image.naturalWidth, height: image.naturalHeight })
+        setCropZoom(1)
+        setCropOffset({ x: 0, y: 0 })
+      }
+      image.src = String(reader.result)
+    }
+    reader.readAsDataURL(file)
+  }
+  const handleCropPointerDown = (event) => {
+    event.currentTarget.setPointerCapture(event.pointerId)
+    dragRef.current = { x: event.clientX, y: event.clientY, offsetX: displayedOffset.x, offsetY: displayedOffset.y }
+  }
+  const handleCropPointerMove = (event) => {
+    if (!dragRef.current) return
+    const nextX = dragRef.current.offsetX + event.clientX - dragRef.current.x
+    const nextY = dragRef.current.offsetY + event.clientY - dragRef.current.y
+    setCropOffset({ x: Math.max(-maxOffsetX, Math.min(maxOffsetX, nextX)), y: Math.max(-maxOffsetY, Math.min(maxOffsetY, nextY)) })
+  }
+  const applyCrop = () => {
+    if (!photoDraft) return
+    const image = new Image()
+    image.onload = () => {
+      const displayScale = baseScale * cropZoom
+      const sourceSize = cropSize / displayScale
+      const sourceX = Math.max(0, Math.min(photoDraft.width - sourceSize, (photoDraft.width - sourceSize) / 2 - displayedOffset.x / displayScale))
+      const sourceY = Math.max(0, Math.min(photoDraft.height - sourceSize, (photoDraft.height - sourceSize) / 2 - displayedOffset.y / displayScale))
+      const canvas = document.createElement('canvas')
+      canvas.width = 512
+      canvas.height = 512
+      const context = canvas.getContext('2d')
+      if (!context) return
+      context.drawImage(image, sourceX, sourceY, sourceSize, sourceSize, 0, 0, canvas.width, canvas.height)
+      update('photo', canvas.toDataURL('image/png'))
+      setPhotoDraft(null)
+    }
+    image.src = photoDraft.src
+  }
+  return (
+    <div className="modal-backdrop">
+      <div className="modal account-modal">
+        <div className="modal-head">
+          <div><p className="eyebrow">PENGELOLAAN AKUN</p><h2>Kelola akun</h2></div>
+          <button className="close-btn" onClick={onClose} aria-label="Tutup"><X size={19} /></button>
+        </div>
+        <form onSubmit={(event) => { event.preventDefault(); onSave({ ...value, password: value.password || user.password }) }}>
+          <div className="account-form">
+            <div className="account-photo-preview">{value.photo ? <img src={value.photo} alt="Foto profil" /> : getUserInitials(value)}</div>
+            <div className="field-group">Foto profil<label className="photo-file-picker"><Upload size={17} /><span>Pilih foto profil<small>Atur posisi dan crop setelah memilih</small></span><input type="file" accept="image/*" onChange={handlePhoto} /></label></div>
+            <label className="field-group full-span">Nama lengkap <b>*</b><input required autoComplete="name" value={value.name || ''} onChange={(event) => update('name', event.target.value)} placeholder="Masukkan nama lengkap" /></label>
+            <label className="field-group">Username <b>*</b><input required value={value.username || ''} onChange={(event) => update('username', event.target.value.toLowerCase().replace(/\s/g, ''))} /></label>
+            <label className="field-group">Email <b>*</b><input required type="email" value={value.email || ''} onChange={(event) => update('email', event.target.value)} /></label>
+            <label className="field-group full-span">Kontak person (WhatsApp)<input type="tel" inputMode="tel" autoComplete="tel" value={value.contactWhatsapp || ''} onChange={(event) => update('contactWhatsapp', event.target.value.replace(/[^0-9+]/g, ''))} placeholder="Contoh: 081234567890" /></label>
+            <label className="field-group full-span">Password baru<small className="field-hint">Kosongkan jika password tidak diubah.</small><input type="password" value={value.password || ''} onChange={(event) => update('password', event.target.value)} placeholder="Masukkan password baru" /></label>
+          </div>
+          <div className="modal-foot"><button type="button" className="secondary-btn" onClick={onClose}>Batal</button><button type="submit" className="primary-btn"><Check size={16} /> Simpan akun</button></div>
+        </form>
+      </div>
+      {photoDraft && <div className="photo-editor-backdrop">
+        <section className="photo-editor" role="dialog" aria-modal="true" aria-labelledby="photo-editor-title">
+          <div className="photo-editor-heading"><div><p className="eyebrow">FOTO PROFIL</p><h2 id="photo-editor-title">Atur foto Anda</h2></div><button type="button" className="close-btn" onClick={() => setPhotoDraft(null)} aria-label="Tutup editor"><X size={19} /></button></div>
+          <p className="photo-editor-hint">Geser foto untuk mengatur posisi, lalu sesuaikan pembesaran.</p>
+          <div className="photo-crop-stage" onPointerDown={handleCropPointerDown} onPointerMove={handleCropPointerMove} onPointerUp={() => { dragRef.current = null }} onPointerCancel={() => { dragRef.current = null }}>
+            <img src={photoDraft.src} alt="Pratinjau foto yang akan dipotong" draggable="false" style={{ width: renderedWidth, height: renderedHeight, left: `calc(50% + ${displayedOffset.x}px)`, top: `calc(50% + ${displayedOffset.y}px)` }} />
+            <div className="photo-crop-mask" />
+          </div>
+          <div className="photo-zoom-control"><button type="button" className="icon-btn" aria-label="Perkecil foto" title="Perkecil foto" onClick={() => setCropZoom((zoom) => Math.max(1, zoom - 0.1))}><ZoomOut size={18} /></button><input type="range" min="1" max="3" step="0.05" value={cropZoom} aria-label="Tingkat pembesaran foto" onChange={(event) => setCropZoom(Number(event.target.value))} /><button type="button" className="icon-btn" aria-label="Perbesar foto" title="Perbesar foto" onClick={() => setCropZoom((zoom) => Math.min(3, zoom + 0.1))}><ZoomIn size={18} /></button></div>
+          <div className="photo-editor-actions"><button type="button" className="secondary-btn" onClick={() => { update('photo', photoDraft.src); setPhotoDraft(null) }}>Lewati</button><button type="button" className="primary-btn" onClick={applyCrop}><Check size={16} /> Terapkan crop</button></div>
+        </section>
+      </div>}
+    </div>
+  )
 }
 
-function Overview({ records, fields, user, t, onNavigate }) {
-  const approved = records.filter((record) => record.status === 'Disetujui').length
-  const pending = records.filter((record) => record.status !== 'Disetujui').length
-  const total = records.reduce((sum, record) => sum + Number(record.values.nilai_bantuan || 0), 0)
-  const max = Math.max(...records.map((record) => Number(record.values.nilai_bantuan || 0)), 1)
-  return <><section className="page-heading"><div><p className="eyebrow">MONITORING PROGRAM</p><h1>{t.welcome}, Admin <span className="heading-leaf">✦</span></h1><p className="muted">Pantau perkembangan penyaluran hibah di seluruh wilayah Jawa Tengah.</p></div><div className="heading-actions"><button className="secondary-btn" onClick={() => alert('Laporan siap diunduh pada integrasi berikutnya.')}><ArrowDownToLine size={16} /> Unduh laporan</button><button className="primary-btn" onClick={() => onNavigate('database')}><Plus size={16} /> Pengajuan baru</button></div></section><section className="stat-grid"><StatCard icon={ClipboardList} label={t.records} value={records.length} change="+12.5%" tone="mint" /><StatCard icon={Check} label={t.approved} value={approved} change="+8.2%" tone="yellow" /><StatCard icon={Activity} label={t.pending} value={pending} change="-3.1%" tone="pink" negative /><StatCard icon={BarChart3} label={t.value} value={`Rp ${formatCurrency(total)}`} change="+16.8%" tone="blue" /></section><section className="dashboard-grid"><div className="panel chart-panel"><div className="panel-head"><div><h2>Nilai penyaluran hibah</h2><p className="muted">Perbandingan nilai bantuan berdasarkan pengajuan</p></div><button className="filter-button">Bulan ini <ChevronDown size={15} /></button></div><div className="chart-area"><div className="chart-y"><span>150 jt</span><span>100 jt</span><span>50 jt</span><span>0</span></div><div className="bars">{records.map((record) => <div className="bar-column" key={record.id}><div className="bar-value">{Math.round(Number(record.values.nilai_bantuan) / 1000000)} jt</div><div className="bar" style={{ height: `${Math.max(12, Number(record.values.nilai_bantuan) / max * 160)}px` }} /><span>{record.values.nama_kelompok.split(' ').slice(-1)[0]}</span></div>)}</div></div></div><div className="panel insight-panel"><div className="panel-head"><div><h2>Insight cepat</h2><p className="muted">Ringkasan performa hari ini</p></div><MoreHorizontal size={18} /></div><div className="insight-highlight"><div className="insight-icon"><Activity size={18} /></div><div><strong>92%</strong><span>kelengkapan data</span></div><span className="trend-up">+4.6%</span></div><div className="progress-line"><span style={{ width: '92%' }} /></div><div className="insight-list"><div><span className="dot green-dot" />Pengajuan dengan dokumen lengkap<strong>24</strong></div><div><span className="dot orange-dot" />Menunggu verifikasi<strong>{pending}</strong></div><div><span className="dot blue-dot" />Wilayah aktif<strong>12</strong></div></div></div></section><section className="panel recent-panel"><div className="panel-head"><div><h2>{t.recent}</h2><p className="muted">Aktivitas terbaru dalam sistem</p></div><button className="text-btn" onClick={() => onNavigate('database')}>Lihat semua <span>→</span></button></div><RecordTable records={records.slice(0, 4)} fields={fields} compact /></section></>
+function Overview({ records, fields, verifications, user, t, onNavigate }) {
+  const parseNumericValue = (value) => {
+    if (value === undefined || value === null || value === '') return 0
+    if (typeof value === 'number') return Number.isFinite(value) ? value : 0
+    if (Array.isArray(value)) return value.reduce((sum, item) => sum + parseNumericValue(item), 0)
+    const text = String(value).trim()
+    if (!text) return 0
+    const normalized = text.replace(/Rp|rp|\./g, '').replace(/\s+/g, '').replace(',', '.')
+    const parsed = Number(normalized)
+    return Number.isFinite(parsed) ? parsed : 0
+  }
+
+  const getRecordYear = (record) => {
+    const values = record?.values ?? {}
+    const yearField = Object.entries(values).find(([key, value]) => {
+      if (value === undefined || value === null || value === '') return false
+      const keyLower = String(key).toLowerCase()
+      const valueLower = String(value).toLowerCase()
+      return keyLower.includes('tahun') || valueLower.includes('tahun')
+    })
+
+    if (yearField) return String(yearField[1]).replace(/\D/g, '')
+
+    const configuredYear = fields.find((field) => {
+      const fieldKey = String(field?.key || '').toLowerCase()
+      const fieldLabel = String(field?.label || '').toLowerCase()
+      return fieldKey.includes('tahun') || fieldLabel.includes('tahun')
+    })
+    if (configuredYear) return String(values[configuredYear.key] ?? '').replace(/\D/g, '')
+
+    return ''
+  }
+
+  const getRecordBudget = (record) => {
+    const values = record?.values ?? {}
+    const budgetKeys = ['nilai_bantuan', 'pagu_anggaran', 'anggaran', 'anggaran_bantuan', 'nilai_anggaran', 'nominal_bantuan', 'jumlah_bantuan']
+
+    for (const key of budgetKeys) {
+      const value = values[key]
+      if (value !== undefined && value !== null && value !== '') return parseNumericValue(value)
+    }
+
+    const configuredBudget = fields.find((field) => {
+      const fieldKey = String(field?.key || '').toLowerCase()
+      const fieldLabel = String(field?.label || '').toLowerCase()
+      return !fieldKey.includes('tahun') && !fieldLabel.includes('tahun') && (fieldKey.includes('anggaran') || fieldKey.includes('nilai') || fieldKey.includes('bantuan') || fieldLabel.includes('anggaran') || fieldLabel.includes('nilai') || fieldLabel.includes('bantuan'))
+    })
+    if (configuredBudget) return parseNumericValue(values[configuredBudget.key])
+
+    const fallback = Object.entries(values).reduce((sum, [key, value]) => {
+      const lowerKey = String(key).toLowerCase()
+      const lowerValue = String(value).toLowerCase()
+      if (lowerKey.includes('tahun') || lowerValue.includes('tahun')) return sum
+      if ((lowerKey.includes('anggaran') || lowerKey.includes('nilai') || lowerKey.includes('bantuan') || lowerKey.includes('pagu')) && value !== '') {
+        return sum + parseNumericValue(value)
+      }
+      return sum
+    }, 0)
+
+    return fallback
+  }
+
+  const years = [...new Set(records.map((record) => getRecordYear(record)).filter(Boolean))]
+    .sort((left, right) => right.localeCompare(left, undefined, { numeric: true }))
+  const [selectedYear, setSelectedYear] = useState(years[0] || '')
+  const [activePieCategory, setActivePieCategory] = useState(null)
+
+  useEffect(() => {
+    if (selectedYear && years.length && !years.includes(selectedYear)) {
+      setSelectedYear(years[0] || '')
+    }
+  }, [years, selectedYear])
+
+  const focusRecords = selectedYear ? records.filter((record) => getRecordYear(record) === selectedYear) : records
+  const comparisonYear = selectedYear && years.includes(String(Number(selectedYear) - 1)) ? String(Number(selectedYear) - 1) : years[1] || ''
+  const comparisonRecords = comparisonYear ? records.filter((record) => getRecordYear(record) === comparisonYear) : []
+
+  const formatShareChange = (current, previous) => {
+    if (!previous && !current) return '0.0%'
+    if (!previous) return '+100.0%'
+    const delta = ((current - previous) / previous) * 100
+    const sign = delta >= 0 ? '+' : ''
+    return `${sign}${delta.toFixed(1)}%`
+  }
+
+  const approved = focusRecords.filter((record) => record.status === 'Disetujui').length
+  const pending = focusRecords.filter((record) => record.status !== 'Disetujui').length
+  const total = focusRecords.reduce((sum, record) => sum + getRecordBudget(record), 0)
+  const verificationByRecord = new Map((verifications || []).map((verification) => [String(verification.hibahId), verification]))
+  const verificationCategories = [
+    { id: 'passed', label: 'Lolos', color: '#357c55' },
+    { id: 'failed', label: 'Tidak Lolos', color: '#c45c4a' },
+    { id: 'unverified', label: '-/Belum verifikasi', color: '#a6aea8' },
+  ]
+  const getVerificationCategory = (record) => {
+    const verification = verificationByRecord.get(String(record.id))
+    const status = String(verification?.status || record.status || '').trim().toLowerCase()
+    if (['terverifikasi', 'lolos', 'disetujui'].includes(status)) return 'passed'
+    if (['ditolak', 'tidak lolos', 'perlu perbaikan'].includes(status)) return 'failed'
+    return 'unverified'
+  }
+  const verificationSummary = verificationCategories.map((category) => {
+    const categoryRecords = focusRecords.filter((record) => getVerificationCategory(record) === category.id)
+    return {
+      ...category,
+      groups: categoryRecords.length,
+      budget: categoryRecords.reduce((sum, record) => sum + getRecordBudget(record), 0),
+      percentage: focusRecords.length ? categoryRecords.length / focusRecords.length : 0,
+    }
+  })
+  const kabkotTotals = focusRecords.reduce((totals, record) => {
+    const kabkot = String(record.values?.kabkot || 'Lainnya').trim() || 'Lainnya'
+    totals[kabkot] = (totals[kabkot] || 0) + getRecordBudget(record)
+    return totals
+  }, {})
+  const kabkotGroupCounts = focusRecords.reduce((counts, record) => {
+    const kabkot = String(record.values?.kabkot || 'Lainnya').trim() || 'Lainnya'
+    counts[kabkot] = (counts[kabkot] || 0) + 1
+    return counts
+  }, {})
+  const chartData = Object.entries(kabkotTotals).sort(([, left], [, right]) => right - left)
+  const chartColumnsStyle = { gridTemplateColumns: `repeat(${Math.max(chartData.length, 1)}, minmax(0, 1fr))` }
+  const max = Math.max(...chartData.map(([, value]) => Number(value || 0)), 1)
+  const chartTicks = [max, max / 2, 0]
+  const topKabkot = chartData[0] || ['-', 0]
+  const totalKabkotArea = chartData.reduce((sum, [, value]) => sum + Number(value || 0), 0)
+  const avgKabkot = chartData.length ? totalKabkotArea / chartData.length : 0
+
+  const recordsChange = formatShareChange(focusRecords.length, comparisonRecords.length)
+  const approvedChange = formatShareChange(approved, comparisonRecords.filter((record) => record.status === 'Disetujui').length)
+  const pendingChange = formatShareChange(pending, comparisonRecords.filter((record) => record.status !== 'Disetujui').length)
+  const totalChange = formatShareChange(total, comparisonRecords.reduce((sum, record) => sum + getRecordBudget(record), 0))
+
+  const insightLabel = selectedYear ? `${selectedYear}` : years[0] ? `Tahun ${years[0]}` : 'Semua data'
+
+  return (
+    <div className="content-wrap">
+      <section className="page-heading">
+        <div>
+          <p className="eyebrow">MONITORING PROGRAM</p>
+          <h1>{t.welcome}, Admin <span className="heading-leaf">✦</span></h1>
+          <p className="muted">Pantau perkembangan penyaluran hibah di seluruh wilayah Jawa Tengah.</p>
+        </div>
+        <div className="heading-actions">
+          <label className="filter-inline">
+            <span>Tahun Anggaran</span>
+            <select value={selectedYear} onChange={(event) => setSelectedYear(event.target.value)}>
+              <option value="">Semua</option>
+              {years.map((year) => <option key={year} value={year}>{year}</option>)}
+            </select>
+          </label>
+          <button className="secondary-btn" onClick={() => alert('Laporan siap diunduh pada integrasi berikutnya.')}><ArrowDownToLine size={16} /> Unduh laporan</button>
+          <button className="primary-btn" onClick={() => onNavigate('database')}><Plus size={16} /> Pengajuan baru</button>
+        </div>
+      </section>
+
+      <section className="stat-grid">
+        <StatCard icon={UsersRound} label={t.records} value={focusRecords.length} change={recordsChange} tone="mint" />
+        <StatCard icon={Check} label={t.approved} value={approved} change={approvedChange} tone="yellow" />
+        <StatCard icon={Activity} label={t.pending} value={pending} change={pendingChange} tone="pink" negative />
+        <StatCard icon={BudgetMoneyIcon} label={t.value} value={`Rp ${formatCurrency(total)}`} change={totalChange} tone="blue" />
+      </section>
+
+      <section className="dashboard-grid">
+        <div className="panel chart-panel">
+          <div className="panel-head">
+            <div>
+              <h2>Kumulatif pagu anggaran per kabupaten/kota</h2>
+              <p className="muted">Data kumulatif anggaran per kabupaten/kota{selectedYear ? ` · ${selectedYear}` : ''}</p>
+            </div>
+            <button className="filter-button">{selectedYear || 'Semua tahun'} <ChevronDown size={15} /></button>
+          </div>
+          <div className="chart-area">
+            <div className="chart-y">{chartTicks.map((tick) => <span key={tick}>{tick === 0 ? '0' : `${formatCurrency(Math.round(tick / 1000000))} jt`}</span>)}</div>
+            <div className={`chart-track ${chartData.length > 24 ? 'is-dense' : ''}`} role="region" aria-label="Diagram batang anggaran per kabupaten/kota" tabIndex={0}>
+              <div className="bars" style={chartColumnsStyle}>
+                {chartData.length ? chartData.map(([kabkot, totalKabkot]) => (
+                  <div className="bar-column" key={kabkot} tabIndex={0} role="img" aria-label={`${kabkot}, anggaran Rp ${formatCurrency(totalKabkot)}, ${formatBudgetShare(totalKabkot, total)} dari total anggaran, ${formatCurrency(kabkotGroupCounts[kabkot] || 0)} kelompok`}>
+                    <div className="bar-tooltip" aria-hidden="true">
+                      <strong>{kabkot}</strong>
+                      <span>Anggaran <b>Rp {formatCurrency(totalKabkot)}</b></span>
+                      <span>Persentase dari total <b>{formatBudgetShare(totalKabkot, total)}</b></span>
+                      <span>Jumlah kelompok <b>{formatCurrency(kabkotGroupCounts[kabkot] || 0)}</b></span>
+                    </div>
+                    <div className="bar-value">{formatCurrency(Math.round(totalKabkot / 1000000))}</div>
+                    <div className="bar" style={{ height: `${Math.max(12, totalKabkot / max * 130)}px` }} />
+                  </div>
+                )) : <div className="empty-chart-state">Tidak ada data untuk tahun yang dipilih.</div>}
+              </div>
+              {chartData.length > 0 && <div className="chart-x-axis" style={chartColumnsStyle} aria-hidden="true">
+                {chartData.map(([kabkot]) => <div className="chart-x-label" key={kabkot}><span>{kabkot}</span></div>)}
+              </div>}
+            </div>
+          </div>
+        </div>
+
+        <div className="panel insight-panel status-insight-panel">
+          <div className="panel-head">
+            <div>
+              <h2>Status verifikasi kelompok</h2>
+              <p className="muted">Persentase berdasarkan jumlah kelompok{selectedYear ? ` · ${selectedYear}` : ''}</p>
+            </div>
+            <MoreHorizontal size={16} aria-hidden="true" />
+          </div>
+          <div className="status-chart-content" onMouseLeave={() => setActivePieCategory(null)}>
+            <div className="status-chart-layout">
+              <VerificationStatusPie data={verificationSummary} totalCount={focusRecords.length} onSelect={setActivePieCategory} />
+              <div className="status-pie-legend">
+                {verificationSummary.map((category) => (
+                  <button type="button" className={`status-legend-entry ${activePieCategory === category.id ? 'active' : ''}`} key={category.id} onMouseEnter={() => setActivePieCategory(category.id)} onFocus={() => setActivePieCategory(category.id)} onBlur={() => setActivePieCategory(null)}>
+                    <span className="status-legend-swatch" style={{ '--status-color': category.color }} />
+                    <span className="status-legend-label">{category.label}</span>
+                    <strong>{formatPercentage(category.groups, focusRecords.length)}</strong>
+                  </button>
+                ))}
+              </div>
+            </div>
+            {activePieCategory && verificationSummary.filter((category) => category.id === activePieCategory).map((category) => (
+              <div className="status-chart-tooltip" key={category.id} role="tooltip">
+                <strong>{category.label}</strong>
+                <span>Jumlah kelompok <b>{formatCurrency(category.groups)}</b></span>
+                <span>Jumlah anggaran <b>Rp {formatCurrency(category.budget)}</b></span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <div className="panel insight-panel full-width-panel">
+        <div className="panel-head">
+          <div>
+            <h2>Ringkasan kinerja</h2>
+            <p className="muted">Peringkat kontribusi anggaran berdasarkan tahun anggaran aktif.</p>
+          </div>
+          <MoreHorizontal size={16} />
+        </div>
+        <div className="insight-body">
+          <div className="insight-highlight">
+            <div className="insight-icon"><Sparkles size={18} /></div>
+            <div>
+              <strong>{chartData[0]?.[0] || 'Belum ada data'}</strong>
+              <span>kabupaten/kota terbesar</span>
+            </div>
+            <span className="trend-up">Rp {formatCurrency(chartData[0]?.[1] || 0)}</span>
+          </div>
+          <div className="insight-metrics">
+            <div><span>Wilayah terdata</span><strong>{chartData.length}</strong></div>
+            <div><span>Rata-rata kab/kota</span><strong>Rp {formatCurrency(avgKabkot)}</strong></div>
+            <div><span>Periode</span><strong>{insightLabel}</strong></div>
+          </div>
+          <div className="progress-line"><span style={{ width: `${Math.min(100, chartData.length ? (chartData[0][1] / totalKabkotArea) * 100 : 0)}%` }} /></div>
+          <div className="insight-list">
+            <div><span className="dot green-dot" />Pengajuan dengan dokumen lengkap<strong>24</strong></div>
+            <div><span className="dot orange-dot" />Menunggu verifikasi<strong>{pending}</strong></div>
+            <div><span className="dot blue-dot" />Wilayah aktif<strong>{chartData.length}</strong></div>
+          </div>
+          <div className="mini-grid">
+            {chartData.slice(0, 4).map(([kabkot, value]) => (
+              <div className="mini-metric" key={kabkot}>
+                <span>{kabkot}</span>
+                <strong>Rp {formatCurrency(value)}</strong>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <section className="panel recent-panel">
+        <div className="panel-head">
+          <div>
+            <h2>{t.recent}</h2>
+            <p className="muted">Aktivitas terbaru dalam sistem</p>
+          </div>
+          <button className="text-btn" onClick={() => onNavigate('database')}>Lihat semua <span>→</span></button>
+        </div>
+        <RecordTable records={records.slice(0, 4)} fields={fields} compact />
+      </section>
+    </div>
+  )
 }
+
+function VerificationStatusPie({ data, totalCount, onSelect }) {
+  const radius = 66
+  const circumference = 2 * Math.PI * radius
+  let offset = 0
+
+  return (
+    <svg className="status-pie" viewBox="0 0 160 160" role="img" aria-label="Diagram persentase status verifikasi kelompok">
+      <circle cx="80" cy="80" r={radius} fill="none" stroke="var(--line)" strokeWidth="23" />
+      {data.map((category) => {
+        const segmentLength = circumference * category.percentage
+        const visibleLength = Math.max(0, segmentLength - (category.groups ? 2 : 0))
+        const currentOffset = offset
+        offset += segmentLength
+        if (!category.groups) return null
+        return <circle key={category.id} className="status-pie-segment" cx="80" cy="80" r={radius} fill="none" stroke={category.color} strokeWidth="23" strokeDasharray={`${visibleLength} ${circumference - visibleLength}`} strokeDashoffset={-currentOffset} transform="rotate(-90 80 80)" tabIndex={0} role="button" aria-label={`${category.label}: ${formatPercentage(category.groups, totalCount)}, ${formatCurrency(category.groups)} kelompok, anggaran Rp ${formatCurrency(category.budget)}`} onMouseEnter={() => onSelect(category.id)} onFocus={() => onSelect(category.id)} />
+      })}
+      <text className="status-pie-total" x="80" y="78" textAnchor="middle">{formatCurrency(totalCount)}</text>
+      <text className="status-pie-caption" x="80" y="96" textAnchor="middle">KELOMPOK</text>
+    </svg>
+  )
+}
+
+function BudgetMoneyIcon({ size }) { return <span className="budget-money-icon" style={{ '--icon-size': `${size}px` }} aria-hidden="true"><Banknote className="budget-money-note" /><Coins className="budget-money-coins" /></span> }
 
 function StatCard({ icon: Icon, label, value, change, tone, negative }) { return <div className="stat-card"><div className={`stat-icon ${tone}`}><Icon size={19} /></div><div className="stat-body"><span>{label}</span><strong>{value}</strong><small className={negative ? 'negative' : ''}><span>{negative ? '↓' : '↑'}</span> {change} <em>dari bulan lalu</em></small></div><MoreHorizontal className="stat-more" size={17} /></div> }
 function VerificationFieldsPage({ fields, setFields }) {
@@ -583,12 +1075,16 @@ function VerificationFormModal({ record, hibahFields, fields, verification, onCl
     }
     onSave({ id: verification?.id, hibahId: record.id, noId: record.noId, status, values })
   }
-  return <div className="modal-backdrop"><div className="modal verification-modal"><div className="modal-head"><div><p className="eyebrow">FORM VERIFIKASI</p><h2>{verification ? 'Perbarui verifikasi' : 'Verifikasi data kelompok'}</h2><p className="muted">{record.noId} · {record.values.nama_kelompok || 'Kelompok hibah'}</p></div><button className="close-btn" onClick={onClose} aria-label="Tutup"><X size={19} /></button></div><form onSubmit={submit}><div className="verification-form-content"><section className="verification-source"><h3>Data pengajuan dari Database Hibah</h3><div className="verification-source-grid">{sourceFields.map((field) => <div key={field.id}><span>{field.label}</span><strong>{formatVerificationValue(record.values[field.key], field)}</strong></div>)}</div></section><div className="verification-controls"><label className="field-group">Hasil verifikasi <b>*</b><select value={status} onChange={(event) => setStatus(event.target.value)}><option>Terverifikasi</option><option>Perlu Perbaikan</option><option>Ditolak</option></select></label>{visibleFields.map((field) => <DynamicInputProfessional key={field.id} field={field} value={values[field.key]} onChange={(value) => update(field.key, value)} />)}{!visibleFields.length && <p className="muted">Belum ada pertanyaan aktif pada Config Form Verifikasi.</p>}</div></div><div className="modal-foot"><button type="button" className="secondary-btn" onClick={onClose}>Batal</button><button type="submit" className="primary-btn"><ClipboardCheck size={16} /> {verification ? 'Simpan perubahan' : 'Simpan verifikasi'}</button></div></form></div></div>
+  return <div className="modal-backdrop"><div className="modal verification-modal"><div className="modal-head"><div><p className="eyebrow">FORM VERIFIKASI</p><h2>{verification ? 'Perbarui verifikasi' : 'Verifikasi data kelompok'}</h2><p className="muted">{record.noId} · {record.values.nama_kelompok || 'Kelompok hibah'}</p></div><button className="close-btn" onClick={onClose} aria-label="Tutup"><X size={19} /></button></div><form onSubmit={submit}><div className="verification-form-content"><section className="verification-source"><h3>Data pengajuan dari Database Hibah</h3><div className="verification-source-grid">{sourceFields.map((field) => <div key={field.id}><span>{field.label}</span><strong>{formatVerificationValue(record.values[field.key], field)}</strong></div>)}</div></section><div className="verification-controls"><label className="field-group">Hasil verifikasi <b>*</b><select value={status} onChange={(event) => setStatus(event.target.value)}><option>Terverifikasi</option><option>Proses Berlangsung</option><option>Perlu Perbaikan</option><option>Ditolak</option></select></label>{visibleFields.map((field) => <DynamicInputProfessional key={field.id} field={field} value={values[field.key]} onChange={(value) => update(field.key, value)} />)}{!visibleFields.length && <p className="muted">Belum ada pertanyaan aktif pada Config Form Verifikasi.</p>}</div></div><div className="modal-foot"><button type="button" className="secondary-btn" onClick={onClose}>Batal</button><button type="submit" className="primary-btn"><ClipboardCheck size={16} /> {verification ? 'Simpan perubahan' : 'Simpan verifikasi'}</button></div></form></div></div>
 }
 
 function formatVerificationValue(value, field) {
   if (value === undefined || value === null || value === '') return '-'
-  if (field.type === 'currency' || field.key.includes('anggaran') || field.key.includes('nilai')) return formatBudget(value)
+  const key = String(field?.key ?? '').toLowerCase()
+  const label = String(field?.label ?? '').toLowerCase()
+  const isYearField = key.includes('tahun') || label.includes('tahun')
+  if (isYearField) return String(value).replace(/\D/g, '')
+  if (field.type === 'currency' || (field.key.includes('anggaran') && !isYearField) || field.key.includes('nilai')) return formatBudget(value)
   return Array.isArray(value) ? value.join(', ') : String(value)
 }
 
@@ -620,14 +1116,69 @@ function VerificationDatabasePage({ records, verifications, setVerifications, ve
 
 function DatabasePage({ records, setRecords, fields, allFields, verificationFields, verifications, setVerifications, user, role, t }) {
   const [search, setSearch] = useState('')
+  const [showFilters, setShowFilters] = useState(false)
+  const [filters, setFilters] = usePersistedState(`hibah-database-filters-${user?.id || 'anonymous'}`, { tahun_anggaran: '', pokja: '', kabkot: '' })
+  const [showExportMenu, setShowExportMenu] = useState(false)
+  const [isImporting, setIsImporting] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(null)
   const [selected, setSelected] = useState(null)
   const [verificationTarget, setVerificationTarget] = useState(null)
-  const filtered = records.filter((record) => JSON.stringify(record.values).toLowerCase().includes(search.toLowerCase()))
+  const filterOptions = Object.keys(filters).reduce((options, key) => {
+    options[key] = [...new Set(records.map((record) => record.values?.[key]).filter((value) => value !== undefined && value !== null && String(value).trim()).map(String))]
+      .sort((left, right) => key === 'tahun_anggaran' ? right.localeCompare(left, undefined, { numeric: true }) : left.localeCompare(right, 'id'))
+    return options
+  }, {})
+  const filtered = records.filter((record) => {
+    const matchesSearch = JSON.stringify(record.values).toLowerCase().includes(search.toLowerCase())
+    return matchesSearch && Object.entries(filters).every(([key, value]) => !value || String(record.values?.[key] ?? '').trim().toLocaleLowerCase('id-ID') === value.toLocaleLowerCase('id-ID'))
+  })
+  const activeFilterCount = Object.values(filters).filter(Boolean).length
   const openForm = (record = null) => { setEditing(record); setShowForm(true) }
   const save = (values, noId) => { if (editing) setRecords(records.map((record) => record.id === editing.id ? { ...record, noId: role === 'superadmin' ? noId : record.noId, values } : record)); else setRecords([{ id: Date.now(), noId: getNextGrantId(records), status: 'Menunggu', createdAt: 'Hari ini', values }, ...records]); setShowForm(false); setEditing(null) }
   const remove = (id) => { if (window.confirm('Hapus data pengajuan ini?')) setRecords(records.filter((record) => record.id !== id)) }
+  const importRecords = async (event) => {
+    const input = event.currentTarget
+    const file = input.files?.[0]
+    input.value = ''
+    if (!file) return
+    setIsImporting(true)
+    try {
+      const imported = await readGrantImport(file, allFields)
+      if (!imported.length) throw new Error('Tidak ada baris valid. Pastikan file memiliki kolom Nama kelompok.')
+      if (!window.confirm(`Impor ${imported.length} baris dari ${file.name}? Baris dengan No ID yang sama akan diperbarui.`)) return
+      let added = 0
+      let updated = 0
+      const nextRecords = [...records]
+      imported.forEach((row, index) => {
+        const existingIndex = row.noId ? nextRecords.findIndex((record) => record.noId === row.noId) : -1
+        if (existingIndex >= 0) {
+          const existing = nextRecords[existingIndex]
+          nextRecords[existingIndex] = { ...existing, status: row.status || existing.status, createdAt: row.createdAt || existing.createdAt, values: { ...existing.values, ...row.values } }
+          updated += 1
+          return
+        }
+        const duplicateId = row.noId && nextRecords.some((record) => record.noId === row.noId)
+        const noId = row.noId && !duplicateId ? row.noId : getNextGrantId(nextRecords)
+        nextRecords.unshift({ id: Date.now() + index, noId, status: row.status || 'Menunggu', createdAt: row.createdAt || new Date().toLocaleDateString('id-ID'), values: row.values })
+        added += 1
+      })
+      setRecords(nextRecords)
+      window.alert(`Impor selesai: ${added} data ditambahkan, ${updated} data diperbarui.`)
+    } catch (error) {
+      window.alert(error.message || 'File Excel tidak dapat dibaca.')
+    } finally {
+      setIsImporting(false)
+    }
+  }
+  const exportRecords = async (format) => {
+    setShowExportMenu(false)
+    try {
+      await exportGrantData(format, filtered, allFields.filter((field) => field.active))
+    } catch (error) {
+      window.alert(error.message || 'Data tidak dapat diekspor.')
+    }
+  }
   const saveVerification = (nextVerification) => {
     setVerifications((current) => {
       const existing = current.find((item) => item.hibahId === nextVerification.hibahId)
@@ -636,15 +1187,40 @@ function DatabasePage({ records, setRecords, fields, allFields, verificationFiel
     })
     setVerificationTarget(null)
   }
-  return <><section className="page-heading compact-heading"><div><p className="eyebrow">DATA UTAMA</p><h1>{t.database}</h1><p className="muted">Kelola seluruh pengajuan hibah dengan field yang fleksibel.</p></div><button className="primary-btn" onClick={() => openForm()}><Plus size={16} /> Tambah pengajuan</button></section><div className="database-toolbar"><div className="search-box"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cari nama kelompok, wilayah..." /></div><button className="secondary-btn"><Filter size={16} /> Filter</button><button className="secondary-btn"><ArrowDownToLine size={16} /> Export</button><span className="toolbar-count">{filtered.length} dari {records.length} data</span></div><div className="panel table-panel"><RecordTable records={filtered} fields={fields} onEdit={openForm} onDelete={remove} onSelect={setSelected} onVerify={(record) => setVerificationTarget(record)} verifications={verifications} /></div>{showForm && <RecordFormWithId fields={allFields.filter((field) => field.active)} record={editing} role={role} nextNoId={getNextGrantId(records)} onClose={() => setShowForm(false)} onSave={save} />}{selected && <DetailModal record={selected} fields={fields} onClose={() => setSelected(null)} />}{verificationTarget && <VerificationFormModal record={verificationTarget} hibahFields={allFields} fields={verificationFields} verification={verifications.find((item) => String(item.hibahId) === String(verificationTarget.id))} onClose={() => setVerificationTarget(null)} onSave={saveVerification} />}</>
+  return (
+    <>
+      <section className="page-heading compact-heading">
+        <div><p className="eyebrow">DATA UTAMA</p><h1>{t.database}</h1><p className="muted">Kelola seluruh pengajuan hibah dengan field yang fleksibel.</p></div>
+        <button className="primary-btn" onClick={() => openForm()}><Plus size={16} /> Tambah pengajuan</button>
+      </section>
+      <div className="database-toolbar">
+        <div className="search-box"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cari nama kelompok, wilayah..." /></div>
+        <button className="secondary-btn" onClick={() => setShowFilters((current) => !current)} aria-expanded={showFilters} aria-controls="database-filters"><Filter size={16} /> Filter{activeFilterCount > 0 && <span className="filter-count">{activeFilterCount}</span>}</button>
+        <label className={`secondary-btn database-import-btn ${isImporting ? 'is-importing' : ''}`}>
+          <Upload size={16} /> {isImporting ? 'Mengimpor...' : 'Import Excel'}
+          <input className="visually-hidden" type="file" accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={importRecords} disabled={isImporting} />
+        </label>
+        <div className="export-menu-wrap">
+          <button className="secondary-btn" onClick={() => setShowExportMenu((current) => !current)} aria-expanded={showExportMenu} aria-haspopup="menu"><ArrowDownToLine size={16} /> Export <ChevronDown size={14} /></button>
+          {showExportMenu && <div className="export-menu" role="menu" aria-label="Pilih format export">{[['xls', 'Excel (.xls)'], ['csv', 'CSV (.csv)'], ['pdf', 'PDF (.pdf)']].map(([format, label]) => <button key={format} role="menuitem" onClick={() => exportRecords(format)}>{label}</button>)}</div>}
+        </div>
+        <span className="toolbar-count">{filtered.length} dari {records.length} data</span>
+      </div>
+      {showFilters && <section className="database-filter-panel" id="database-filters" aria-label="Filter database hibah">{[['tahun_anggaran', 'Tahun Anggaran'], ['pokja', 'Pokja Pengampu'], ['kabkot', 'Kabkot']].map(([key, label]) => <label key={key}>{label}<select value={filters[key]} onChange={(event) => setFilters((current) => ({ ...current, [key]: event.target.value }))}><option value="">Semua</option>{filterOptions[key].map((option) => <option key={option} value={option}>{option}</option>)}</select></label>)}{activeFilterCount > 0 && <button className="text-btn" onClick={() => setFilters({ tahun_anggaran: '', pokja: '', kabkot: '' })}>Hapus filter</button>}</section>}
+      <div className="panel table-panel"><RecordTable records={filtered} fields={fields} onEdit={openForm} onDelete={remove} onSelect={setSelected} onVerify={(record) => setVerificationTarget(record)} verifications={verifications} emptyMessage={records.length ? 'Tidak ada pengajuan yang cocok dengan pencarian atau filter.' : 'Belum ada data hibah.'} /></div>
+      {showForm && <RecordFormWithId fields={allFields.filter((field) => field.active)} record={editing} role={role} nextNoId={getNextGrantId(records)} onClose={() => setShowForm(false)} onSave={save} />}
+      {selected && <DetailModal record={selected} fields={fields} onClose={() => setSelected(null)} />}
+      {verificationTarget && <VerificationFormModal record={verificationTarget} hibahFields={allFields} fields={verificationFields} verification={verifications.find((item) => String(item.hibahId) === String(verificationTarget.id))} onClose={() => setVerificationTarget(null)} onSave={saveVerification} />}
+    </>
+  )
 }
 
-function RecordTable({ records, fields, onEdit, onDelete, onSelect, onVerify, verifications = [], compact }) {
+function RecordTable({ records, fields, onEdit, onDelete, onSelect, onVerify, verifications = [], compact, emptyMessage = 'Belum ada data hibah.' }) {
   const tableFields = fields.filter(isDataField)
   return <div className={`table-scroll ${compact ? 'compact-table' : ''}`}><table><thead><tr><th className="select-column"><input type="checkbox" /></th>{!compact && <th className="actions-column">Aksi</th>}<th className="row-number-column">No Urut</th><th className="grant-id-column">No ID</th><th>Nama kelompok <ArrowUpDown size={13} /></th>{tableFields.slice(0, compact ? 2 : 4).map((field) => <th key={field.id}>{field.label} <ArrowUpDown size={13} /></th>)}<th>Status</th></tr></thead><tbody>{records.map((record, index) => {
     const verification = verifications.find((item) => item.hibahId === record.id)
     return <tr key={record.id} onClick={() => onSelect?.(record)}><td className="select-column"><input type="checkbox" onClick={(event) => event.stopPropagation()} /></td>{!compact && <td className="actions-column"><div className="row-actions"><button onClick={(event) => { event.stopPropagation(); onVerify?.(record) }} title={verification ? 'Edit verifikasi data' : 'Verifikasi data'} aria-label={`${verification ? 'Edit verifikasi data' : 'Verifikasi data'} ${record.values.nama_kelompok}`}><ClipboardCheck size={15} /></button><button onClick={(event) => { event.stopPropagation(); onEdit(record) }} title="Edit" aria-label={`Edit ${record.values.nama_kelompok}`}><Pencil size={15} /></button><button onClick={(event) => { event.stopPropagation(); onDelete(record.id) }} title="Hapus" aria-label={`Hapus ${record.values.nama_kelompok}`}><Trash2 size={15} /></button></div></td>}<td className="row-number-column">{index + 1}</td><td className="grant-id-column">{record.noId || formatGrantId(index + 1)}</td><td><div className="name-cell"><span className="record-avatar">{record.values.nama_kelompok?.slice(0, 2).toUpperCase()}</span><span><strong>{record.values.nama_kelompok}</strong><small>Dibuat {record.createdAt}</small></span></div></td>{tableFields.slice(0, compact ? 2 : 4).map((field) => <td key={field.id}>{field.type === 'currency' || field.key === 'nilai_bantuan' ? formatBudget(record.values[field.key]) : Array.isArray(record.values[field.key]) ? record.values[field.key].join(', ') : record.values[field.key] || '-'}</td>)}<td><span className={`status status-${record.status.toLowerCase()}`}>{record.status}</span>{verification && <small className={`verification-inline-status verification-${verification.status.toLowerCase().replace(/\s/g, '-')}`}>{verification.status}</small>}</td></tr>
-  })}</tbody></table>{!records.length && <div className="empty-state">Belum ada data hibah.</div>}</div>
+  })}</tbody></table>{!records.length && <div className="empty-state">{emptyMessage}</div>}</div>
 }
 
 function RecordForm({ fields, record, onClose, onSave }) { const [values, setValues] = useState(record?.values || Object.fromEntries(fields.map((field) => [field.key, field.type === 'checklist' ? [] : '']))); const update = (key, value) => setValues((current) => ({ ...current, [key]: value })); const submit = (event) => { event.preventDefault(); onSave(values) }; return <div className="modal-backdrop"><div className="modal large-modal"><div className="modal-head"><div><p className="eyebrow">{record ? 'EDIT DATA' : 'DATA BARU'}</p><h2>{record ? 'Perbarui pengajuan' : 'Tambah pengajuan hibah'}</h2></div><button className="close-btn" onClick={onClose}><X size={19} /></button></div><form onSubmit={submit}><div className="dynamic-form">{fields.map((field) => <DynamicInput key={field.id} field={field} value={values[field.key]} onChange={(value) => update(field.key, value)} />)}</div><div className="modal-foot"><button type="button" className="secondary-btn" onClick={onClose}>Batal</button><button type="submit" className="primary-btn"><Check size={16} /> Simpan pengajuan</button></div></form></div></div> }
@@ -659,10 +1235,10 @@ function DynamicInputProfessional({ field, value, onChange }) { const options = 
 
 function DetailModal({ record, fields, onClose }) { return <div className="modal-backdrop"><div className="modal detail-modal"><div className="modal-head"><div><p className="eyebrow">DETAIL PENGAJUAN</p><h2>{record.values.nama_kelompok}</h2><strong className="detail-no-id">{record.noId || '-'}</strong></div><button className="close-btn" onClick={onClose}><X size={19} /></button></div><div className="detail-status"><span className={`status status-${record.status.toLowerCase()}`}>{record.status}</span><span>Dibuat {record.createdAt}</span></div><div className="detail-list">{fields.filter(isDataField).map((field) => <div key={field.id}><span>{field.label}</span><strong>{field.type === 'currency' ? formatBudget(record.values[field.key]) : Array.isArray(record.values[field.key]) ? record.values[field.key].join(', ') : record.values[field.key] || '-'}</strong></div>)}</div></div></div> }
 
-function FieldsPage({ fields, setFields }) { const [showForm, setShowForm] = useState(false); const [editing, setEditing] = useState(null); const move = (index, direction) => { const next = [...fields]; const target = index + direction; if (target < 0 || target >= next.length) return; [next[index], next[target]] = [next[target], next[index]]; setFields(next.map((field, order) => ({ ...field, order }))) }; const save = (field) => { if (editing) setFields(fields.map((item) => item.id === editing.id ? { ...field, id: editing.id } : item)); else setFields([...fields, { ...field, id: `f${Date.now()}` }]); setShowForm(false); setEditing(null) }; const toggle = (id) => setFields(fields.map((field) => field.id === id ? { ...field, active: !field.active } : field)); return <><section className="page-heading compact-heading"><div><p className="eyebrow">KONFIGURASI SISTEM</p><h1>Config field</h1><p className="muted">Bentuk struktur data hibah tanpa mengubah kode aplikasi.</p></div><button className="primary-btn" onClick={() => { setEditing(null); setShowForm(true) }}><Plus size={16} /> Tambah field</button></section><div className="field-summary"><div><FileCog size={18} /><span><strong>{fields.length}</strong> Total field</span></div><div><Check size={18} /><span><strong>{fields.filter((field) => field.active).length}</strong> Field aktif</span></div><div><Activity size={18} /><span><strong>Live</strong> Sinkronisasi</span></div></div><div className="panel fields-panel"><div className="panel-head"><div><h2>Struktur field database</h2><p className="muted">Field aktif akan otomatis tampil di tabel dan form pengajuan.</p></div><button className="secondary-btn"><SlidersHorizontal size={16} /> Preview form</button></div><div className="field-list">{fields.map((field, index) => <div className={`field-row ${!field.active ? 'inactive' : ''} ${dragOverId === field.id ? 'drag-over' : ''}`} key={field.id}><div className="drag-handle"><span /><span /><span /></div><div className="field-order">{String(index + 1).padStart(2, '0')}</div><div className="field-info"><strong>{field.label}</strong><small>{field.key} · {typeLabels[field.type]}</small></div><span className="field-type">{typeLabels[field.type]}</span>{field.required && <span className="required-tag">Wajib</span>}<button className={`toggle ${field.active ? 'on' : ''}`} onClick={() => toggle(field.id)} aria-label={`${field.active ? 'Nonaktifkan' : 'Aktifkan'} ${field.label}`}><span /></button><div className="field-actions"><button onClick={() => move(index, -1)} title="Naikkan" aria-label={`Naikkan ${field.label}`}><ChevronUp size={14} /></button><button onClick={() => move(index, 1)} title="Turunkan" aria-label={`Turunkan ${field.label}`}><ChevronDown size={14} /></button><button onClick={() => { setEditing(field); setShowForm(true) }} title="Edit" aria-label={`Edit ${field.label}`}><Pencil size={15} /></button><button onClick={() => setDeleteTarget(field)} title="Hapus" aria-label={`Hapus ${field.label}`}><Trash2 size={15} /></button></div></div>)}</div></div>{showForm && <FieldFormLegacy field={editing} onClose={() => setShowForm(false)} onSave={save} />}</>
+function FieldsPage({ fields, setFields }) { const [showForm, setShowForm] = useState(false); const [editing, setEditing] = useState(null); const move = (index, direction) => { const next = [...fields]; const target = index + direction; if (target < 0 || target >= next.length) return; [next[index], next[target]] = [next[target], next[index]]; setFields(next.map((field, order) => ({ ...field, order }))) }; const save = (field) => { if (editing) setFields(fields.map((item) => item.id === editing.id ? { ...field, id: editing.id } : item)); else setFields([...fields, { ...field, id: `f${Date.now()}` }]); setShowForm(false); setEditing(null) }; const toggle = (id) => setFields(fields.map((field) => field.id === id ? { ...field, active: !field.active } : field)); return <><section className="page-heading compact-heading"><div><p className="eyebrow">KONFIGURASI SISTEM</p><h1>Config field</h1><p className="muted">Bentuk struktur data hibah tanpa mengubah kode aplikasi.</p></div><button className="primary-btn" onClick={() => { setEditing(null); setShowForm(true) }}><Plus size={16} /> Tambah field</button></section><div className="field-summary"><div><FileCog size={18} /><span><strong>{fields.length}</strong> Total field</span></div><div><Check size={18} /><span><strong>{fields.filter((field) => field.active).length}</strong> Field aktif</span></div><div><Activity size={18} /><span><strong>Live</strong> Sinkronisasi</span></div></div><div className="panel fields-panel"><div className="panel-head"><div><h2>Struktur field database</h2><p className="muted">Field aktif akan otomatis tampil di tabel dan form pengajuan.</p></div><button className="secondary-btn"><SlidersHorizontal size={16} /> Preview form</button></div><div className="field-list">{fields.map((field, index) => <div className={`field-row ${!field.active ? 'inactive' : ''} ${dragOverId === field.id ? 'drag-over' : ''}`} key={field.id}><div className="drag-handle"><span /><span /><span /></div><div className="field-order">{String(index + 1).padStart(2, '0')}</div><div className="field-info"><strong>{field.label}</strong><small>{field.key} · {typeLabels[field.type]}</small></div><span className="field-type">{typeLabels[field.type]}</span>{field.required && <span className="required-tag">Wajib</span>}<button className={`toggle ${field.active ? 'on' : ''}`} onClick={() => toggle(field.id)} aria-label={`${field.active ? 'Nonaktifkan' : 'Aktifkan'} ${field.label}`}><span /></button><div className="field-actions"><button onClick={() => move(index, -1)} title="Naikkan" aria-label={`Naikkan ${field.label}`}><ChevronUp size={14} /></button><button onClick={() => move(index, 1)} title="Turunkan" aria-label={`Turunkan ${field.label}`}><ChevronDown size={14} /></button><button onClick={() => { setEditing(field); setShowForm(true) }} title="Edit" aria-label={`Edit ${field.label}`}><Pencil size={15} /></button><button onClick={() => setDeleteTarget(field)} title="Hapus" aria-label={`Hapus ${field.label}`}><Trash2 size={15} /></button></div></div>)}</div></div>{showForm && <FieldFormProfessional field={editing} onClose={() => setShowForm(false)} onSave={save} />}</>
 }
 
-function FieldFormLegacy({ field, onClose, onSave }) { const [value, setValue] = useState(field || { label: '', key: '', type: 'text', required: false, active: true, options: '' }); const update = (key, next) => setValue((current) => ({ ...current, [key]: next })); const submit = (event) => { event.preventDefault(); onSave(value) }; return <div className="modal-backdrop"><div className="modal field-modal"><div className="modal-head"><div><p className="eyebrow">CONFIG FIELD</p><h2>{field ? 'Edit field' : 'Field baru'}</h2></div><button className="close-btn" onClick={onClose}><X size={19} /></button></div><form onSubmit={submit}><div className="dynamic-form"><label className="field-group">Label field <b>*</b><input required value={value.label} onChange={(event) => update('label', event.target.value)} placeholder="Contoh: Nama penerima" /></label><label className="field-group">Field key <b>*</b><input required value={value.key} onChange={(event) => update('key', event.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))} placeholder="nama_penerima" /></label><label className="field-group">Tipe field <b>*</b><select value={value.type} onChange={(event) => update('type', event.target.value)}>{Object.entries(typeLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>{['checklist', 'list'].includes(value.type) && <label className="field-group full-span">Daftar opsi <b>*</b><textarea rows="5" required value={value.options} onChange={(event) => update('options', event.target.value)} placeholder="Pisahkan opsi dengan titik koma (;)" /><small className="field-hint">Contoh: Sapi;Kambing;Domba;Ayam</small></label>}<label className="switch-label"><input type="checkbox" checked={value.required} onChange={(event) => update('required', event.target.checked)} /><span>Field wajib diisi</span></label></div><div className="modal-foot"><button type="button" className="secondary-btn" onClick={onClose}>Batal</button><button type="submit" className="primary-btn"><Check size={16} /> Simpan field</button></div></form></div></div> }
+function FieldFormProfessional({ field, onClose, onSave }) { const [value, setValue] = useState(field || { label: '', key: '', type: 'text', required: false, active: true, options: '' }); const update = (key, next) => setValue((current) => ({ ...current, [key]: next })); const submit = (event) => { event.preventDefault(); onSave(value) }; return <div className="modal-backdrop"><div className="modal field-modal"><div className="modal-head"><div><p className="eyebrow">CONFIG FIELD</p><h2>{field ? 'Edit field' : 'Field baru'}</h2></div><button className="close-btn" onClick={onClose}><X size={19} /></button></div><form onSubmit={submit}><div className="dynamic-form"><label className="field-group">Label field <b>*</b><input required value={value.label} onChange={(event) => update('label', event.target.value)} placeholder="Contoh: Nama penerima" /></label><label className="field-group">Field key <b>*</b><input required value={value.key} onChange={(event) => update('key', event.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))} placeholder="nama_penerima" /></label><label className="field-group">Tipe field <b>*</b><select value={value.type} onChange={(event) => update('type', event.target.value)}>{Object.entries(typeLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>{['checklist', 'list'].includes(value.type) && <label className="field-group full-span">Daftar opsi <b>*</b><textarea rows="5" required value={value.options} onChange={(event) => update('options', event.target.value)} placeholder="Pisahkan opsi dengan titik koma (;)" /><small className="field-hint">Contoh: Sapi;Kambing;Domba;Ayam</small></label>}<label className="switch-label"><input type="checkbox" checked={value.required} onChange={(event) => update('required', event.target.checked)} /><span>Field wajib diisi</span></label></div><div className="modal-foot"><button type="button" className="secondary-btn" onClick={onClose}>Batal</button><button type="submit" className="primary-btn"><Check size={16} /> Simpan field</button></div></form></div></div> }
 
 function SettingsPage({ user, onEditAccount, theme, setTheme, language, setLanguage }) {
   const themes = [
@@ -728,7 +1304,7 @@ function FieldsPageDnd({ fields, setFields }) {
   const duplicate = (field) => { const keyBase = `${field.key}_copy`; let key = keyBase; let suffix = 2; while (fields.some((item) => item.key === key)) key = `${keyBase}_${suffix++}`; const copy = { ...field, id: `f${Date.now()}`, key, label: `${field.label} (salinan)` }; const index = fields.findIndex((item) => item.id === field.id); const next = [...fields]; next.splice(index + 1, 0, copy); setFields(next.map((item, order) => ({ ...item, order }))) }
   const toggle = (id) => setFields(fields.map((field) => field.id === id ? { ...field, active: !field.active } : field))
   const remove = () => { if (!deleteTarget) return; setFields(fields.filter((field) => field.id !== deleteTarget.id).map((field, order) => ({ ...field, order }))); setDeleteTarget(null) }
-  return <><section className="page-heading compact-heading"><div><p className="eyebrow">KONFIGURASI SISTEM</p><h1>Config field</h1><p className="muted">Bentuk struktur data hibah tanpa mengubah kode aplikasi.</p></div><button className="primary-btn" onClick={() => { setEditing(null); setShowForm(true) }}><Plus size={16} /> Tambah field</button></section><div className="field-summary"><div><FileCog size={18} /><span><strong>{fields.length}</strong> Total field</span></div><div><Check size={18} /><span><strong>{fields.filter((field) => field.active).length}</strong> Field aktif</span></div><div><Activity size={18} /><span><strong>Live</strong> Sinkronisasi</span></div></div><div className="panel fields-panel"><div className="panel-head"><div><h2>Struktur field database</h2><p className="muted">Seret handle di kiri untuk mengubah urutan field.</p></div><button className="secondary-btn"><SlidersHorizontal size={16} /> Preview form</button></div><div className="field-list">{fields.map((field, index) => <div className={`field-row ${!field.active ? 'inactive' : ''} ${dragOverId === field.id ? 'drag-over' : ''}`} key={field.id} draggable onDragStart={() => setDraggedId(field.id)} onDragOver={(event) => { event.preventDefault(); setDragOverId(field.id) }} onDragEnd={() => { reorder(dragOverId); setDraggedId(null); setDragOverId(null) }}><div className="drag-handle" title="Seret untuk mengubah urutan" aria-label={`Seret ${field.label}`}><span /><span /><span /></div><div className="field-order">{String(index + 1).padStart(2, '0')}</div><div className="field-info"><strong>{field.label}</strong><small>{field.key} · {typeLabels[field.type]}</small></div><span className="field-type">{typeLabels[field.type]}</span>{field.active && <span className="required-tag">Wajib</span>}<button className={`toggle ${field.active ? 'on' : ''}`} onClick={() => toggle(field.id)} aria-label={`${field.active ? 'Nonaktifkan' : 'Aktifkan'} ${field.label}`}><span /></button><div className="field-actions"><button onClick={() => move(index, -1)} disabled={index === 0} title="Naikkan" aria-label={`Naikkan ${field.label}`}><ChevronUp size={14} /></button><button onClick={() => move(index, 1)} disabled={index === fields.length - 1} title="Turunkan" aria-label={`Turunkan ${field.label}`}><ChevronDown size={14} /></button><button onClick={() => duplicate(field)} title="Duplikat" aria-label={`Duplikat ${field.label}`}><Copy size={15} /></button><button onClick={() => { setEditing(field); setShowForm(true) }} title="Edit" aria-label={`Edit ${field.label}`}><Pencil size={15} /></button><button onClick={() => setDeleteTarget(field)} title="Hapus" aria-label={`Hapus ${field.label}`}><Trash2 size={15} /></button></div></div>)}</div></div>{showForm && <FieldFormLegacy field={editing} onClose={() => setShowForm(false)} onSave={save} />}{deleteTarget && <DeleteFieldConfirm field={deleteTarget} onCancel={() => setDeleteTarget(null)} onConfirm={remove} />}</>
+  return <><section className="page-heading compact-heading"><div><p className="eyebrow">KONFIGURASI SISTEM</p><h1>Config field</h1><p className="muted">Bentuk struktur data hibah tanpa mengubah kode aplikasi.</p></div><button className="primary-btn" onClick={() => { setEditing(null); setShowForm(true) }}><Plus size={16} /> Tambah field</button></section><div className="field-summary"><div><FileCog size={18} /><span><strong>{fields.length}</strong> Total field</span></div><div><Check size={18} /><span><strong>{fields.filter((field) => field.active).length}</strong> Field aktif</span></div><div><Activity size={18} /><span><strong>Live</strong> Sinkronisasi</span></div></div><div className="panel fields-panel"><div className="panel-head"><div><h2>Struktur field database</h2><p className="muted">Seret handle di kiri untuk mengubah urutan field.</p></div><button className="secondary-btn"><SlidersHorizontal size={16} /> Preview form</button></div><div className="field-list">{fields.map((field, index) => <div className={`field-row ${!field.active ? 'inactive' : ''} ${dragOverId === field.id ? 'drag-over' : ''}`} key={field.id} draggable onDragStart={() => setDraggedId(field.id)} onDragOver={(event) => { event.preventDefault(); setDragOverId(field.id) }} onDragEnd={() => { reorder(dragOverId); setDraggedId(null); setDragOverId(null) }}><div className="drag-handle" title="Seret untuk mengubah urutan" aria-label={`Seret ${field.label}`}><span /><span /><span /></div><div className="field-order">{String(index + 1).padStart(2, '0')}</div><div className="field-info"><strong>{field.label}</strong><small>{field.key} · {typeLabels[field.type]}</small></div><span className="field-type">{typeLabels[field.type]}</span>{field.active && <span className="required-tag">Wajib</span>}<button className={`toggle ${field.active ? 'on' : ''}`} onClick={() => toggle(field.id)} aria-label={`${field.active ? 'Nonaktifkan' : 'Aktifkan'} ${field.label}`}><span /></button><div className="field-actions"><button onClick={() => move(index, -1)} disabled={index === 0} title="Naikkan" aria-label={`Naikkan ${field.label}`}><ChevronUp size={14} /></button><button onClick={() => move(index, 1)} disabled={index === fields.length - 1} title="Turunkan" aria-label={`Turunkan ${field.label}`}><ChevronDown size={14} /></button><button onClick={() => duplicate(field)} title="Duplikat" aria-label={`Duplikat ${field.label}`}><Copy size={15} /></button><button onClick={() => { setEditing(field); setShowForm(true) }} title="Edit" aria-label={`Edit ${field.label}`}><Pencil size={15} /></button><button onClick={() => setDeleteTarget(field)} title="Hapus" aria-label={`Hapus ${field.label}`}><Trash2 size={15} /></button></div></div>)}</div></div>{showForm && <FieldFormProfessional field={editing} onClose={() => setShowForm(false)} onSave={save} />}{deleteTarget && <DeleteFieldConfirm field={deleteTarget} onCancel={() => setDeleteTarget(null)} onConfirm={remove} />}</>
 }
 
 function FieldsPageDelete({ fields, setFields }) {
