@@ -1,6 +1,59 @@
+version: '3.8'
+
+x-casaos:
+  architectures:
+    - amd64
+    - arm64
+  main: app
+  icon: https://raw.githubusercontent.com/Rchinton/Hibah-v6.0.2/refs/heads/main/assets/logo-peternakan.png
+  title:
+    custom: Hibah Peternakan
+    en_us: Hibah Peternakan
+
 services:
+  # 1. Service Frontend (Nginx/Vite dari GitHub)
   app:
-    build: .
+    build:
+      context: https://github.com/Rchinton/Hibah-v6.0.2.git#main
+      dockerfile: Dockerfile
+    image: hibah_app:latest
+    container_name: hibah_app
     ports:
       - "9100:80"
     restart: unless-stopped
+    depends_on:
+      - api
+    x-casaos:
+      icon: https://raw.githubusercontent.com/Rchinton/Hibah-v6.0.2/refs/heads/main/assets/logo-peternakan.png
+      title:
+        custom: Hibah Peternakan
+        en_us: Hibah Peternakan
+
+  # 2. Service API Backend (Nginx)
+  api:
+    image: nginx:alpine
+    container_name: hibah_api
+    volumes:
+      - "/DATA/AppData/Hibah v6/api:/usr/share/nginx/html"
+    environment:
+      - HIBAH_DB_HOST=db
+      - HIBAH_DB_NAME=hibah_peternakan
+      - HIBAH_DB_USER=root
+      - HIBAH_DB_PASSWORD=secretpassword
+    restart: unless-stopped
+    depends_on:
+      - db
+
+  # 3. Service Database (MySQL 8.0)
+  db:
+    image: mysql:8.0
+    container_name: hibah_db
+    command: --default-authentication-plugin=mysql_native_password
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=secretpassword
+      - MYSQL_DATABASE=hibah_peternakan
+    ports:
+      - "3306:3306"
+    volumes:
+      - "/DATA/AppData/Hibah v6/db:/var/lib/mysql"

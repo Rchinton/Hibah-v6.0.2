@@ -735,7 +735,20 @@ try {
                     respond(['error' => 'Anda hanya dapat mengubah password sendiri.'], 403);
                 }
             }
-
+        } else {
+            $submittedUsers = normalizeUsers($body['users']);
+            $sessionUserIncluded = false;
+            $activeSuperadminCount = 0;
+            foreach ($submittedUsers as $submittedUser) {
+                if ($submittedUser['id'] === $sessionUser['id']) $sessionUserIncluded = true;
+                if ($submittedUser['role'] === 'superadmin' && $submittedUser['status'] === 'Aktif') $activeSuperadminCount++;
+            }
+            if (!$sessionUserIncluded) {
+                respond(['error' => 'Akun yang sedang digunakan tidak dapat dihapus.'], 422);
+            }
+            if ($activeSuperadminCount === 0) {
+                respond(['error' => 'Sistem harus memiliki minimal satu superadmin aktif.'], 422);
+            }
         }
         $pdo->beginTransaction();
         saveUsers($pdo, $body['users']);

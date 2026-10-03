@@ -539,7 +539,7 @@ function App() {
           {activePage === 'verification-config' && role !== 'superadmin' && <AccessDenied onBack={() => setActivePage('overview')} />}
           {activePage === 'verification-database' && <VerificationDatabasePage records={records} verifications={verifications} setVerifications={setVerifications} verificationFields={verificationFields} hibahFields={visibleFields} user={activeUser} />}
           {activePage === 'settings' && <SettingsPage user={activeUser} onEditAccount={() => setAccountModalOpen(true)} theme={theme} setTheme={setTheme} language={language} setLanguage={setLanguage} />}
-          {activePage === 'users' && role === 'superadmin' && <UsersPage users={users} setUsers={setUsers} />}
+          {activePage === 'users' && role === 'superadmin' && <UsersPage users={users} setUsers={setUsers} currentUser={activeUser} />}
           {activePage === 'users' && role !== 'superadmin' && <AccessDenied onBack={() => setActivePage('overview')} />}
         </div>
         <footer className="app-footer">© Dinas Pertanian dan Peternakan Provinsi Jawa Tengah - Bidang Peternakan - 2026</footer>
@@ -1638,7 +1638,27 @@ function VerificationFieldsPage({ fields, setFields }) {
       return next.map((item, order) => ({ ...item, order }))
     })
   }
-  const actions = <div className="verification-config-actions"><button className="secondary-btn" onClick={() => setShowPreview(true)}><Eye size={16} /> Preview form</button><button className="primary-btn" onClick={() => { setEditing(null); setShowForm(true) }}><Plus size={16} /> Tambah pertanyaan</button></div>
+  const exportConfig = () => {
+    const payload = { app: 'E-Hibah', type: 'verification-field-configuration', version: 1, exportedAt: new Date().toISOString(), fields }
+    downloadFile(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }), `e-hibah-verification-config-${new Date().toISOString().slice(0, 10)}.json`)
+  }
+  const importConfig = async (event) => {
+    const input = event.currentTarget
+    const file = input.files?.[0]
+    input.value = ''
+    if (!file) return
+    try {
+      const payload = JSON.parse(await file.text())
+      const imported = Array.isArray(payload) ? payload : payload?.fields
+      const valid = Array.isArray(imported) && imported.length > 0 && imported.every((field) => field && typeof field.label === 'string' && typeof field.key === 'string' && typeLabels[field.type])
+      if (!valid) throw new Error('Format konfigurasi form verifikasi tidak valid.')
+      if (!window.confirm('Impor konfigurasi ini dan mengganti konfigurasi form verifikasi saat ini?')) return
+      setFields(imported.map((field, index) => ({ ...field, id: field.id || `vf${Date.now()}_${index}`, order: index })))
+    } catch (error) {
+      window.alert(error.message || 'File konfigurasi tidak dapat dibaca.')
+    }
+  }
+  const actions = <div className="verification-config-actions"><button className="secondary-btn" onClick={() => setShowPreview(true)}><Eye size={16} /> Preview form</button><label className="secondary-btn"><Upload size={16} /> Import<input className="visually-hidden" type="file" accept="application/json,.json" onChange={importConfig} /></label><button className="secondary-btn" onClick={exportConfig}><ArrowDownToLine size={16} /> Export</button><button className="primary-btn" onClick={() => { setEditing(null); setShowForm(true) }}><Plus size={16} /> Tambah pertanyaan</button></div>
   return <><section className="page-heading compact-heading"><div><p className="eyebrow">PENGATURAN VERIFIKASI</p><h1>Config Form Verifikasi</h1><p className="muted">Atur pertanyaan yang muncul saat memverifikasi pengajuan Hibah.</p></div>{actions}</section><div className="field-summary"><div><ClipboardCheck size={18} /><span><strong>{fields.length}</strong> Total pertanyaan</span></div><div><Check size={18} /><span><strong>{fields.filter((field) => field.active).length}</strong> Pertanyaan aktif</span></div></div><section className="panel fields-panel"><div className="panel-head"><div><h2>Form verifikasi data kelompok</h2><p className="muted">Seret handle untuk mengubah urutan. Pertanyaan aktif tampil di popup verifikasi.</p></div></div><div className="field-list verification-field-list">{fields.map((field, index) => <div className={`field-row ${!field.active ? 'inactive' : ''} ${dragOverId === field.id ? 'drag-over' : ''}`} key={field.id} onDragOver={(event) => { event.preventDefault(); setDragOverId(field.id) }} onDrop={(event) => { event.preventDefault(); reorder(field.id); setDraggedId(null); setDragOverId(null) }} onDragLeave={() => setDragOverId((current) => current === field.id ? null : current)} onDragEnd={() => { reorder(dragOverId); setDraggedId(null); setDragOverId(null) }}><button className="drag-handle verification-drag-handle" draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; setDraggedId(field.id) }} title="Seret untuk mengubah urutan" aria-label={`Seret ${field.label}`}><span /><span /><span /></button><div className="field-order">{String(index + 1).padStart(2, '0')}</div><div className="field-info"><strong>{field.label}</strong><small>{field.key} · {typeLabels[field.type]}</small></div><span className="field-type">{typeLabels[field.type]}</span>{field.required && <span className="required-tag">Wajib</span>}<button className={`toggle ${field.active ? 'on' : ''}`} onClick={() => toggle(field)} aria-label={`${field.active ? 'Nonaktifkan' : 'Aktifkan'} ${field.label}`}><span /></button><div className="field-actions"><button onClick={() => duplicate(field)} title="Duplikat pertanyaan" aria-label={`Duplikat ${field.label}`}><Copy size={14} /></button><button onClick={() => { setEditing(field); setShowForm(true) }} title="Edit pertanyaan" aria-label={`Edit ${field.label}`}><Pencil size={14} /></button><button onClick={() => remove(field)} title="Hapus pertanyaan" aria-label={`Hapus ${field.label}`}><Trash2 size={14} /></button></div></div>)}{!fields.length && <div className="empty-state">Belum ada pertanyaan. Tambahkan pertanyaan untuk membentuk Form Verifikasi.</div>}</div></section>{showForm && <VerificationFieldForm field={editing} onClose={() => { setShowForm(false); setEditing(null) }} onSave={save} />}{showPreview && <VerificationFormPreview fields={fields} onClose={() => setShowPreview(false)} />}</>
 }
 
@@ -1703,7 +1723,51 @@ function VerificationDatabasePage({ records, verifications, setVerifications, ve
   const [search, setSearch] = useState('')
   const [editing, setEditing] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
+  const [isImporting, setIsImporting] = useState(false)
   const filtered = verifications.filter((item) => `${item.noId} ${item.hibahSnapshot?.nama_kelompok || ''} ${item.status} ${item.verifiedByName || ''}`.toLowerCase().includes(search.toLowerCase()))
+  const exportVerifications = () => {
+    const payload = { app: 'E-Hibah', type: 'verification-records', version: 1, exportedAt: new Date().toISOString(), verifications: filtered }
+    downloadFile(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }), `e-hibah-verifikasi-${new Date().toISOString().slice(0, 10)}.json`)
+  }
+  const importVerifications = async (event) => {
+    const input = event.currentTarget
+    const file = input.files?.[0]
+    input.value = ''
+    if (!file) return
+    setIsImporting(true)
+    try {
+      const payload = JSON.parse(await file.text())
+      const imported = Array.isArray(payload) ? payload : payload?.verifications
+      const valid = Array.isArray(imported) && imported.length > 0 && imported.every((item) => item && typeof item.noId === 'string' && typeof item.status === 'string' && item.values && typeof item.values === 'object' && !Array.isArray(item.values))
+      if (!valid) throw new Error('Format arsip verifikasi tidak valid.')
+      const sourceByNoId = new Map(records.filter((record) => record.noId).map((record) => [String(record.noId), record]))
+      const linked = imported.flatMap((item) => {
+        const source = sourceByNoId.get(item.noId.trim())
+        return source ? [{ ...item, hibahId: source.id, noId: source.noId, hibahSnapshot: item.hibahSnapshot || source.values }] : []
+      })
+      if (!linked.length) throw new Error('Tidak ada No ID arsip yang cocok dengan Database Hibah saat ini.')
+      const existingIds = new Set(verifications.map((item) => String(item.hibahId)))
+      const added = linked.filter((item) => !existingIds.has(String(item.hibahId))).length
+      const updated = linked.length - added
+      const skipped = imported.length - linked.length
+      if (!window.confirm(`Impor ${linked.length} hasil verifikasi dari ${file.name}? ${added} ditambahkan, ${updated} diperbarui${skipped ? `, ${skipped} dilewati karena No ID tidak cocok` : ''}.`)) return
+      setVerifications((current) => {
+        const next = [...current]
+        linked.forEach((item, index) => {
+          const existingIndex = next.findIndex((currentItem) => String(currentItem.hibahId) === String(item.hibahId))
+          const saved = { ...item, id: existingIndex >= 0 ? next[existingIndex].id : `v${Date.now()}_${index}` }
+          if (existingIndex >= 0) next[existingIndex] = { ...next[existingIndex], ...saved }
+          else next.unshift(saved)
+        })
+        return next
+      })
+      window.alert(`Impor selesai: ${added} data ditambahkan, ${updated} data diperbarui${skipped ? `, ${skipped} data dilewati` : ''}.`)
+    } catch (error) {
+      window.alert(error.message || 'File arsip verifikasi tidak dapat dibaca.')
+    } finally {
+      setIsImporting(false)
+    }
+  }
   const openEdit = (verification) => {
     const source = records.find((record) => String(record.id) === String(verification.hibahId))
     if (!source) return window.alert('Data Hibah sumber tidak ditemukan.')
@@ -1722,7 +1786,39 @@ function VerificationDatabasePage({ records, verifications, setVerifications, ve
     setVerifications((current) => current.filter((item) => item.id !== deleteTarget.id))
     setDeleteTarget(null)
   }
-  return <><section className="page-heading compact-heading"><div><p className="eyebrow">ARSIP PEMERIKSAAN</p><h1>Database Verifikasi Hibah</h1><p className="muted">Hasil verifikasi tersimpan dan tertaut pada data pengajuan asal.</p></div><span className="saved-badge"><ClipboardCheck size={14} /> {verifications.length} hasil verifikasi</span></section><div className="database-toolbar"><div className="search-box"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cari No ID, kelompok, status..." /></div><span className="toolbar-count">{filtered.length} dari {verifications.length} hasil</span></div><div className="panel table-panel"><div className="table-scroll"><table className="verification-table"><thead><tr><th>No</th><th>No ID Hibah</th><th>Kelompok penerima</th><th>Hasil verifikasi</th><th>Verifikator</th><th>Terakhir diperbarui</th><th>Aksi</th></tr></thead><tbody>{filtered.map((item, index) => <tr key={item.id}><td>{index + 1}</td><td>{item.noId}</td><td><strong>{item.hibahSnapshot?.nama_kelompok || '-'}</strong></td><td><span className={`verification-status verification-${item.status.toLowerCase().replace(/\s/g, '-')}`}>{item.status}</span></td><td>{item.verifiedByName || '-'}</td><td>{item.updatedAt || item.createdAt || '-'}</td><td><div className="row-actions"><button onClick={() => openEdit(item)} title="Edit verifikasi" aria-label={`Edit verifikasi ${item.noId}`}><Pencil size={15} /></button><button onClick={() => setDeleteTarget(item)} title="Hapus verifikasi" aria-label={`Hapus verifikasi ${item.noId}`}><Trash2 size={15} /></button></div></td></tr>)}</tbody></table>{!filtered.length && <div className="empty-state">{verifications.length ? 'Tidak ada hasil yang cocok dengan pencarian.' : 'Belum ada hasil verifikasi. Mulai dari tombol Verifikasi data pada Database Hibah.'}</div>}</div></div>{editing && <VerificationFormModal record={editing.source} hibahFields={hibahFields} fields={verificationFields} verification={editing.verification} onClose={() => setEditing(null)} onSave={save} />}{deleteTarget && <div className="logout-backdrop" role="presentation" onClick={() => setDeleteTarget(null)}><section className="logout-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}><div className="logout-icon"><Trash2 size={21} /></div><h2>Hapus hasil verifikasi?</h2><p>Hasil verifikasi {deleteTarget.noId} akan dihapus. Data pengajuan Hibah tetap tersimpan.</p><div className="logout-actions"><button className="cancel-logout" onClick={() => setDeleteTarget(null)}>Batal</button><button className="confirm-logout" onClick={remove}>Hapus hasil</button></div></section></div>}</>
+  return (
+    <>
+      <section className="page-heading compact-heading">
+        <div><p className="eyebrow">ARSIP PEMERIKSAAN</p><h1>Database Verifikasi Hibah</h1><p className="muted">Hasil verifikasi tersimpan dan tertaut pada data pengajuan asal.</p></div>
+        <span className="saved-badge"><ClipboardCheck size={14} /> {verifications.length} hasil verifikasi</span>
+      </section>
+      <div className="database-toolbar">
+        <div className="search-box"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cari No ID, kelompok, status..." /></div>
+        <label className={`secondary-btn database-import-btn ${isImporting ? 'is-importing' : ''}`}>
+          <Upload size={16} /> {isImporting ? 'Mengimpor...' : 'Import JSON'}
+          <input className="visually-hidden" type="file" accept="application/json,.json" onChange={importVerifications} disabled={isImporting} />
+        </label>
+        <button className="secondary-btn" onClick={exportVerifications}><ArrowDownToLine size={16} /> Export JSON</button>
+        <span className="toolbar-count">{filtered.length} dari {verifications.length} hasil</span>
+      </div>
+      <div className="panel table-panel">
+        <div className="table-scroll">
+          <table className="verification-table">
+            <thead><tr><th>No</th><th>No ID Hibah</th><th>Kelompok penerima</th><th>Hasil verifikasi</th><th>Verifikator</th><th>Terakhir diperbarui</th><th>Aksi</th></tr></thead>
+            <tbody>{filtered.map((item, index) => <tr key={item.id}>
+              <td>{index + 1}</td><td>{item.noId}</td><td><strong>{item.hibahSnapshot?.nama_kelompok || '-'}</strong></td>
+              <td><span className={`verification-status verification-${item.status.toLowerCase().replace(/\s/g, '-')}`}>{item.status}</span></td>
+              <td>{item.verifiedByName || '-'}</td><td>{item.updatedAt || item.createdAt || '-'}</td>
+              <td><div className="row-actions"><button onClick={() => openEdit(item)} title="Edit verifikasi" aria-label={`Edit verifikasi ${item.noId}`}><Pencil size={15} /></button><button onClick={() => setDeleteTarget(item)} title="Hapus verifikasi" aria-label={`Hapus verifikasi ${item.noId}`}><Trash2 size={15} /></button></div></td>
+            </tr>)}</tbody>
+          </table>
+          {!filtered.length && <div className="empty-state">{verifications.length ? 'Tidak ada hasil yang cocok dengan pencarian.' : 'Belum ada hasil verifikasi. Mulai dari tombol Verifikasi data pada Database Hibah.'}</div>}
+        </div>
+      </div>
+      {editing && <VerificationFormModal record={editing.source} hibahFields={hibahFields} fields={verificationFields} verification={editing.verification} onClose={() => setEditing(null)} onSave={save} />}
+      {deleteTarget && <div className="logout-backdrop" role="presentation" onClick={() => setDeleteTarget(null)}><section className="logout-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}><div className="logout-icon"><Trash2 size={21} /></div><h2>Hapus hasil verifikasi?</h2><p>Hasil verifikasi {deleteTarget.noId} akan dihapus. Data pengajuan Hibah tetap tersimpan.</p><div className="logout-actions"><button className="cancel-logout" onClick={() => setDeleteTarget(null)}>Batal</button><button className="confirm-logout" onClick={remove}>Hapus hasil</button></div></section></div>}
+    </>
+  )
 }
 
 function DatabasePage({ records, setRecords, fields, allFields, verificationFields, verifications, setVerifications, user, role, t }) {
@@ -1861,12 +1957,34 @@ function SettingsPage({ user, onEditAccount, theme, setTheme, language, setLangu
   return <><section className="page-heading compact-heading"><div><p className="eyebrow">PREFERENSI AKUN</p><h1>Pengaturan</h1><p className="muted">Sesuaikan pengalaman kerja sesuai kebutuhan Anda.</p></div><span className="saved-badge"><Check size={14} /> Tersimpan otomatis</span></section><div className="settings-grid"><section className="panel settings-panel"><div className="panel-head"><div><h2>Bahasa aplikasi</h2><p className="muted">Pilih bahasa untuk label dan navigasi utama.</p></div><BookOpen size={19} /></div><div className="language-options"><button className={language === 'id' ? 'selected' : ''} onClick={() => setLanguage('id')}><span className="flag-badge">ID</span><span><strong>Bahasa Indonesia</strong><small>Bahasa default sistem</small></span>{language === 'id' && <Check size={16} />}</button><button className={language === 'en' ? 'selected' : ''} onClick={() => setLanguage('en')}><span className="flag-badge flag-en">EN</span><span><strong>English</strong><small>Use English interface</small></span>{language === 'en' && <Check size={16} />}</button></div></section><section className="panel settings-panel"><div className="panel-head"><div><h2>Tema tampilan</h2><p className="muted">Preferensi ini hanya berlaku pada akun Anda.</p></div><Sparkles size={19} /></div><div className="theme-options">{themes.map((item) => <button key={item.id} className={theme === item.id ? 'selected' : ''} onClick={() => setTheme(item.id)}><span className="theme-swatch" style={{ background: item.color }} /><span><strong>{item.label}</strong><small>{item.description}</small></span>{theme === item.id && <Check size={16} />}</button>)}</div></section></div><section className="panel settings-account"><div className="account-avatar">AS</div><div><p className="eyebrow">AKUN AKTIF</p><h2>Admin Sistem</h2><p className="muted">admin@dinas.go.id · Superadmin</p></div><button className="secondary-btn">Edit profil</button></section></>
 }
 
-function UsersPage({ users, setUsers }) {
+function UsersPage({ users, setUsers, currentUser }) {
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [deleteTarget, setDeleteTarget] = useState(null)
   const save = (user) => { if (editing) setUsers(users.map((item) => item.id === editing.id ? { ...user, id: editing.id } : item)); else setUsers([...users, { ...user, id: `u${Date.now()}` }]); setShowForm(false); setEditing(null) }
-  const remove = (id) => { if (users.length > 1 && window.confirm('Nonaktifkan pengguna ini?')) setUsers(users.map((user) => user.id === id ? { ...user, status: 'Nonaktif' } : user)) }
-  return <><section className="page-heading compact-heading"><div><p className="eyebrow">AKSES DAN PERAN</p><h1>Manajemen user</h1><p className="muted">Kelola akun yang dapat mengakses workspace hibah.</p></div><button className="primary-btn" onClick={() => { setEditing(null); setShowForm(true) }}><Plus size={16} /> Tambah user</button></section><div className="user-summary"><span><strong>{users.length}</strong> Total akun</span><span><strong>{users.filter((user) => user.status === 'Aktif').length}</strong> Aktif</span><span><strong>{users.filter((user) => user.role === 'superadmin').length}</strong> Superadmin</span></div><section className="panel users-panel"><div className="panel-head"><div><h2>Daftar pengguna</h2><p className="muted">Perubahan role berlaku pada login berikutnya.</p></div><ShieldCheck size={19} /></div><div className="user-list">{users.map((user) => <div className="user-row" key={user.id}><span className="user-avatar">{user.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span><div className="user-info"><strong>{user.name}</strong><small>{user.email}</small><small>{user.contactWhatsapp || 'Kontak WhatsApp belum diisi'}</small></div><span className={`role-pill ${user.role}`}>{user.role === 'superadmin' ? 'Superadmin' : 'User'}</span><span className={`user-status ${user.status.toLowerCase()}`}>{user.status}</span><div className="row-actions"><button title="Edit" onClick={() => { setEditing(user); setShowForm(true) }}><Pencil size={15} /></button><button title="Nonaktifkan" onClick={() => remove(user.id)}><Trash2 size={15} /></button></div></div>)}</div></section>{showForm && <UserForm user={editing} onClose={() => setShowForm(false)} onSave={save} />}</>
+  const remove = () => {
+    if (!deleteTarget) return
+    if (String(deleteTarget.id) === String(currentUser?.id)) {
+      window.alert('Akun yang sedang digunakan tidak dapat dihapus.')
+      setDeleteTarget(null)
+      return
+    }
+    const remainingActiveSuperadmins = users.filter((user) => user.id !== deleteTarget.id && user.role === 'superadmin' && user.status === 'Aktif')
+    if (deleteTarget.role === 'superadmin' && deleteTarget.status === 'Aktif' && !remainingActiveSuperadmins.length) {
+      window.alert('Tidak dapat menghapus superadmin aktif terakhir.')
+      setDeleteTarget(null)
+      return
+    }
+    setUsers((current) => current.filter((user) => user.id !== deleteTarget.id))
+    setDeleteTarget(null)
+  }
+  return <>
+    <section className="page-heading compact-heading"><div><p className="eyebrow">AKSES DAN PERAN</p><h1>Manajemen user</h1><p className="muted">Kelola akun yang dapat mengakses workspace hibah.</p></div><button className="primary-btn" onClick={() => { setEditing(null); setShowForm(true) }}><Plus size={16} /> Tambah user</button></section>
+    <div className="user-summary"><span><strong>{users.length}</strong> Total akun</span><span><strong>{users.filter((user) => user.status === 'Aktif').length}</strong> Aktif</span><span><strong>{users.filter((user) => user.role === 'superadmin').length}</strong> Superadmin</span></div>
+    <section className="panel users-panel"><div className="panel-head"><div><h2>Daftar pengguna</h2><p className="muted">Perubahan role berlaku pada login berikutnya.</p></div><ShieldCheck size={19} /></div><div className="user-list">{users.map((user) => <div className="user-row" key={user.id}><span className="user-avatar">{user.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</span><div className="user-info"><strong>{user.name}</strong><small>{user.email}</small><small>{user.contactWhatsapp || 'Kontak WhatsApp belum diisi'}</small></div><span className={`role-pill ${user.role}`}>{user.role === 'superadmin' ? 'Superadmin' : 'User'}</span><span className={`user-status ${user.status.toLowerCase()}`}>{user.status}</span><div className="row-actions"><button title="Edit" onClick={() => { setEditing(user); setShowForm(true) }}><Pencil size={15} /></button><button title={String(user.id) === String(currentUser?.id) ? 'Akun yang sedang digunakan tidak dapat dihapus' : 'Hapus user'} aria-label={`Hapus user ${user.name}`} onClick={() => setDeleteTarget(user)}><Trash2 size={15} /></button></div></div>)}</div></section>
+    {showForm && <UserForm user={editing} onClose={() => setShowForm(false)} onSave={save} />}
+    {deleteTarget && <div className="logout-backdrop" role="presentation" onClick={() => setDeleteTarget(null)}><section className="logout-modal" role="alertdialog" aria-modal="true" aria-labelledby="delete-user-title" onClick={(event) => event.stopPropagation()}><div className="logout-icon"><Trash2 size={21} /></div><h2 id="delete-user-title">Konfirmasi hapus user</h2><p>Apakah Anda yakin untuk menghapus <strong>{deleteTarget.name}</strong> dari sistem?</p><div className="logout-actions"><button className="cancel-logout" onClick={() => setDeleteTarget(null)}>Batal</button><button className="confirm-logout" onClick={remove}>Ya, hapus</button></div></section></div>}
+  </>
 }
 
 function UserForm({ user, onClose, onSave }) {
